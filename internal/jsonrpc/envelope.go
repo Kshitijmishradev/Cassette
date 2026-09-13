@@ -122,6 +122,28 @@ func (e Envelope) IsToolCall() bool {
 	return e.Kind == KindRequest && e.Method == MethodToolsCall
 }
 
+// paramsMessage extracts only params, again omitting everything else so a
+// large sibling field is skipped rather than copied.
+type paramsMessage struct {
+	Params json.RawMessage `json:"params"`
+}
+
+// ParseParams returns the raw params of a request or notification.
+//
+// Matching needs this for every method, not just tools/call: during replay
+// there is no server, so initialize and tools/list have to be answered off
+// the tape too, and they are distinguished by their params.
+//
+// Returns nil when there are no params, which is a legitimate shape and not
+// an error.
+func ParseParams(msg []byte) (json.RawMessage, error) {
+	var m paramsMessage
+	if err := json.Unmarshal(msg, &m); err != nil {
+		return nil, fmt.Errorf("jsonrpc: parse params: %w", err)
+	}
+	return m.Params, nil
+}
+
 // ToolCall is the part of a tools/call request that identifies what was
 // asked for.
 type ToolCall struct {

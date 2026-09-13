@@ -199,9 +199,19 @@ const (
 	// EntryTruncated marks an exchange recorded without its response
 	// because the run ended first.
 	EntryTruncated uint32 = 1 << 3
+
+	// EntryServerInitiated marks a message the server sent on its own,
+	// such as notifications/progress or notifications/message. These have
+	// a response blob but no request, because nothing asked for them.
+	// Replay has to emit them without being prompted, which is why they
+	// are distinguishable rather than merged into the ordinary flow.
+	EntryServerInitiated uint32 = 1 << 4
 )
 
 func (e Entry) HasResponse() bool { return e.Flags&EntryHasResponse != 0 }
 func (e Entry) IsError() bool     { return e.Flags&EntryIsError != 0 }
 func (e Entry) IsToolCall() bool  { return e.Flags&EntryIsToolCall != 0 }
 func (e Entry) Truncated() bool   { return e.Flags&EntryTruncated != 0 }
+
+// ServerInitiated reports a message the server sent unprompted.
+func (e Entry) ServerInitiated() bool { return e.Flags&EntryServerInitiated != 0 }

@@ -326,7 +326,7 @@ toolchain.
 
 ### Current phase
 
-**Phase 3 complete** (tag `v0.4-replay`). Phase 4 is next.
+**Phase 4 complete** (tag `v0.5-diff`). Phase 5 is next.
 
 ### Completed
 
@@ -403,6 +403,39 @@ toolchain.
   - **Verified by hand:** an unmatched read-class call falls through to a
     lazily spawned server (242 ms → 1.017 s, the cost made visible); an
     unmatched `create_pull_request` stays refused even outside hermetic mode.
+
+- **Phase 4 — trajectory diff.** 5 commits, tagged `v0.5-diff`.
+  - `internal/diff`: Needleman-Wunsch alignment with tool-aware substitution
+    costs, three-valued verdict, side-by-side rendering that collapses
+    identical runs.
+  - Replay now records its own trajectory; the diff runs automatically after
+    every replay and `--fail-on` gates CI on it.
+  - **Decided:** the outcome is the sequence of write-class calls. Reads are
+    path, not outcome. Reuses the safety classifier, which is a good sign that
+    abstraction was the right one.
+  - **Verified:** an unchanged re-run reports `identical`; a genuinely
+    different agent against the same tape renders a readable side-by-side and
+    exits non-zero.
+
+### Two bugs the end-to-end run caught that unit tests could not
+
+Both are worth keeping; they are the best stories in the project.
+
+**A use-after-free created by our own zero-copy optimization.** `FromTape`
+built a trajectory holding strings that pointed into the memory mapping, then
+the caller closed the reader before rendering. Segfault in `strings.TrimSpace`,
+six frames from anything that looked related. The borrowed-slice contract is
+right for blobs, where it saves megabytes per replay; for an interned method
+name it saved perhaps twenty nanoseconds and bought memory corruption. Names
+are now owned, blobs still are not.
+
+**The tape is in completion order, the replay is in request order.** The
+recorder writes an entry when the *response* arrives, because that is the
+first moment the exchange is complete, so a fast call started second lands on
+the tape ahead of a slow call started first. Comparing tape order against
+request order made an unchanged re-run report `outcome changed` with a
+spurious reordering. No unit test would have found this: both sides were
+individually correct, and only running them against each other exposed it.
 
 ### The verification harness was wrong, and finding out was the point
 
@@ -496,7 +529,26 @@ Worth keeping, since these are the interview stories.
 
 ### Next action
 
-**Phase 4, trajectory diff.** In order:
+**Phase 5, suite runner and parallelism.** In order:
+
+1. `internal/suite`: worker pool, one replay process per cassette. Replays
+   touch nothing external and share no state, so they are embarrassingly
+   parallel; the only real ceiling is the model provider's rate limit.
+2. Aggregate reporting: the pass/drift/fail grid across every cassette.
+3. Wire `cassette test`, with `--jobs` and the `--fail-on` policy already
+   built in phase 4.
+4. **Exit criterion:** N cassettes run in parallel, with a measured
+   serial-versus-parallel wall clock for the README.
+
+Everything phase 5 needs already exists: the diff, the verdict, the per-tape
+report files, and the exit-code contract. This phase is mostly orchestration,
+which is why it should go quickly.
+
+Note for the README: the single-run numbers are already good. Recording the
+verification session took 888 ms; the hermetic replay took **19 ms**. The
+parallel number from this phase is what turns that into the headline.
+
+Superseded plan for phase 4, kept for reference:
 
 1. `internal/diff`: weighted edit-distance alignment over two tool-call
    sequences. Substitution cost from tool equivalence, not name equality.

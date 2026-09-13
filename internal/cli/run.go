@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -56,6 +57,7 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 	}
 
 	ctx := &Context{
+		Ctx:      context.Background(),
 		Args:     fs.Args(),
 		Child:    child,
 		HasChild: hasChild,
@@ -75,6 +77,13 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 		a.PrintCommandHelp(errw, cmd)
 		return ExitError
 	default:
+		// A wrapped process owns its own exit status, and rewriting it would
+		// change what the agent sees. Pass it through verbatim.
+		var ce *ExitCodeError
+		if errors.As(err, &ce) {
+			return ce.Code
+		}
+
 		var fe *FailureError
 		if errors.As(err, &fe) {
 			// A real, reportable negative result. The command has already
@@ -84,6 +93,23 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 		fmt.Fprintf(errw, "%s: %v\n", a.Name, err)
 		return ExitError
 	}
+}
+
+// ExitCodeError carries a child process's exit status out to our own.
+//
+// This exists because cassette wraps other programs. An agent reads the
+// server's exit status to decide whether to restart it, so collapsing an
+// arbitrary status into our own 0/1/2 scheme would change agent behavior.
+type ExitCodeError struct {
+	Code int
+	Msg  string
+}
+
+func (e *ExitCodeError) Error() string {
+	if e.Msg != "" {
+		return e.Msg
+	}
+	return fmt.Sprintf("exited with status %d", e.Code)
 }
 
 // FailureError marks a negative result that is not a tool malfunction, such

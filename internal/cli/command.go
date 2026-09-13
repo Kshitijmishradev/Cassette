@@ -7,6 +7,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -72,6 +73,9 @@ type Context struct {
 	Flags *flag.FlagSet
 	Out   io.Writer
 	Err   io.Writer
+
+	// Ctx is cancelled when the process is asked to shut down.
+	Ctx context.Context
 }
 
 // App is the set of registered commands.

@@ -1,12 +1,15 @@
 package commands
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Kshitijmishradev/cassette/internal/cli"
 	"github.com/Kshitijmishradev/cassette/internal/env"
 	"github.com/Kshitijmishradev/cassette/internal/proxy"
+	"github.com/Kshitijmishradev/cassette/internal/record"
 )
 
 // debugVar turns on proxy diagnostics. Off by default, because those
@@ -41,6 +44,9 @@ a config is invisible during ordinary work. That property is not a
 convenience, it is the condition for anyone leaving it installed.
 
 Set CASSETTE_DEBUG=1 for diagnostics on stderr.`,
+		Flags: func(fs *flag.FlagSet) {
+			fs.String("name", "", "tape name for this server (default: derived from the command)")
+		},
 		Run: runWrap,
 	}
 }
@@ -65,8 +71,32 @@ func runWrap(ctx *cli.Context) error {
 	switch mode {
 	case env.ModeOff:
 		// Pure passthrough.
+
 	case env.ModeRecord:
-		return pending(2, "wrap in record mode")
+		dir := os.Getenv(env.TapeVar)
+		if dir == "" {
+			return fmt.Errorf("%s=record but %s is unset; run this through `cassette record`", env.ModeVar, env.TapeVar)
+		}
+
+		name := ctx.Flags.Lookup("name").Value.String()
+		if name == "" {
+			name = record.TapeName(ctx.Child)
+		}
+
+		rec, err := record.New(filepath.Join(dir, name+".cas"))
+		if err != nil {
+			return err
+		}
+		// Closed before returning, whatever happens, so a tape is finalized
+		// even when the server dies badly. An unclosed tape is missing its
+		// header and is unreadable.
+		defer func() {
+			if cerr := rec.Close(); cerr != nil {
+				fmt.Fprintf(os.Stderr, "cassette: finalizing tape %s: %v\n", name, cerr)
+			}
+		}()
+		observer = rec
+
 	case env.ModeReplay:
 		return pending(3, "wrap in replay mode")
 	}

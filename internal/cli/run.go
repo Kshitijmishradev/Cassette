@@ -48,7 +48,8 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 	if cmd.Flags != nil {
 		cmd.Flags(fs)
 	}
-	if err := fs.Parse(own); err != nil {
+	args, err := parseInterspersed(fs, own)
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			a.PrintCommandHelp(out, cmd)
 			return ExitOK
@@ -58,7 +59,7 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 
 	ctx := &Context{
 		Ctx:      context.Background(),
-		Args:     fs.Args(),
+		Args:     args,
 		Child:    child,
 		HasChild: hasChild,
 		Flags:    fs,
@@ -66,7 +67,7 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 		Err:      errw,
 	}
 
-	err := cmd.Run(ctx)
+	err = cmd.Run(ctx)
 	switch {
 	case err == nil:
 		return ExitOK
@@ -92,6 +93,38 @@ func (a *App) Run(argv []string, out, errw io.Writer) int {
 		}
 		fmt.Fprintf(errw, "%s: %v\n", a.Name, err)
 		return ExitError
+	}
+}
+
+// parseInterspersed parses flags that appear before, after, or between
+// positional arguments, and returns the positionals.
+//
+// Go's flag package stops at the first non-flag argument, so it would read
+//
+//	cassette record demo --suite ./cassettes
+//
+// as three positional arguments and never see the flag. That is not a
+// hypothetical: it is the first thing this tool was typed as, and the
+// failure is silent in the worst way, since --suite quietly keeps its
+// default while the command otherwise appears to work.
+//
+// The fix is to parse repeatedly, peeling off one positional each time the
+// parser stops. Each resumption starts at a non-flag argument by
+// construction, so a positional can never be mistaken for a flag.
+func parseInterspersed(fs *flag.FlagSet, argv []string) ([]string, error) {
+	var positionals []string
+	rest := argv
+
+	for {
+		if err := fs.Parse(rest); err != nil {
+			return nil, err
+		}
+		rest = fs.Args()
+		if len(rest) == 0 {
+			return positionals, nil
+		}
+		positionals = append(positionals, rest[0])
+		rest = rest[1:]
 	}
 }
 

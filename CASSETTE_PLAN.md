@@ -273,19 +273,84 @@ Keep these current, they are half the reason to build it.
 
 ## 10. STATUS (update every session)
 
-**Current phase:** not started (planning complete)
+### Build environment (read this first if the build does not work)
 
-**Blocking:** no folder connected from Kshitij's Mac. He needs to click
-"Add folder" in the Claude desktop app and connect the directory where the
-repo should live. Until then no local build can happen.
+Work happens on Kshitij's Mac in `/Users/kshitijmishra/Cassette`, reached
+through the desktop Linux VM at `$HOME/mnt/Cassette`.
 
-**Completed:**
-- (nothing yet)
+Two environment facts that cost time to discover:
 
-**Measured numbers to fill in:**
+1. **Go is not preinstalled in that VM, and go.dev is blocked** by the egress
+   proxy, as are `proxy.golang.org`, `sum.golang.org` and vanity import hosts
+   like `go.yaml.in`. Only `github.com` and `registry.npmjs.org` resolve.
+   Go 1.27.1 was installed from the `actions/go-versions` GitHub release into
+   `$HOME/go-toolchain`. Every shell needs `source $HOME/goenv.sh` first,
+   which sets GOROOT, GOPATH, GOPROXY=direct and GOSUMDB=off.
+2. **Git needs delete permission** on the connected folder or every commit
+   fails on its own lock files. Granted per session via
+   `device_request_delete_permission`. If commits start failing with
+   "Operation not permitted", that is what to re-request.
+
+Consequence: **the core is stdlib only.** Partly forced by the network, but
+kept on purpose. A binary that sits on the wire between an agent and its tools
+sees every credential that passes through, so a zero-dependency build keeps
+that supply chain surface at zero. CI enforces it by failing if `go.sum` ever
+becomes non-empty. chDB (phase 6, cgo) and the React UI (phase 7, npm) are the
+two known exceptions and both are isolated behind build tags or a separate
+toolchain.
+
+### Current phase
+
+**Phase 0 complete** (tag `v0.1-scaffold`). Phase 1 is next.
+
+### Completed
+
+- **Phase 0 — scaffold.** 14 commits, tagged `v0.1-scaffold`.
+  - dependency-free CLI router with fixed exit codes; `ExitFailure` (behavior
+    changed) is distinct from `ExitError` (the tool broke), because a CI job
+    that cannot tell them apart is useless
+  - argv split at `--` happens *before* flag parsing, so a child flag that
+    collides with one of ours reaches the child intact; the capped slice
+    preventing child-argv corruption has a test pinning it
+  - `CASSETTE_MODE` / `CASSETTE_TAPE` env contract, with the reasoning: the
+    agent spawns the shim from its own static MCP config, so mode cannot be a
+    flag. Unset means off and invalid fails closed to off, so a shim left in a
+    config is invisible during ordinary work
+  - full command surface registered with phase-gated stubs that error rather
+    than exit zero
+  - build stamping, Makefile with `-trimpath` and ldflags, CI running fmt,
+    vet, test, race, cross-compile, plus a guard that fails if `go.sum`
+    becomes non-empty
+  - **Verified:** `make check` passes, `cassette --help` and `cassette version`
+    work from a stamped release build, usage errors and phase gates return the
+    right exit codes.
+
+### Decisions made during implementation
+
+- **Config file is `cassette.json`, not YAML.** No stdlib YAML parser, and
+  writing one is yak-shaving. JSON also matches what the agent ecosystem
+  already uses (`.mcp.json`, `claude_desktop_config.json`).
+- **CLI shape:** `wrap` is the shim installed once in the agent's MCP config;
+  `record` and `replay` are outer commands that run the agent with the right
+  mode in its environment. The user never edits their MCP config again.
+
+### Measured numbers to fill in
+
 - [ ] Phase 2: lookup latency, CAS1 vs JSONL memory and speed
 - [ ] Phase 3: confirmed zero-network replay
 - [ ] Phase 5: serial vs parallel suite wall clock
 - [ ] README headline metric
 
-**Next action:** connect the folder, then Phase 0 scaffold.
+### Next action
+
+**Phase 1, the transparent proxy.** In order:
+
+1. `internal/jsonrpc`: Content-Length framing reader/writer, envelope-only
+   parsing (`id`, `method`, `params.name`, `params.arguments`), everything
+   else passed through as opaque bytes
+2. `internal/proxy`: spawn the child MCP server, pump both directions,
+   forward stderr, propagate exit codes and signals
+3. wire `wrap` to it
+4. **Exit criterion:** Claude Code configured with
+   `cassette wrap -- <server>` behaves identically to using the server
+   directly, across a full real task. Zero observable difference is the bar.

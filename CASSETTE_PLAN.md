@@ -326,7 +326,7 @@ toolchain.
 
 ### Current phase
 
-**Phase 2 complete** (tag `v0.3-record`). Phase 3 is next.
+**Phase 3 complete** (tag `v0.4-replay`). Phase 4 is next.
 
 ### Completed
 
@@ -386,6 +386,45 @@ toolchain.
     calls, including an unprompted `notifications/tools/list_changed` from
     the server, which is what justified the `EntryServerInitiated` flag.
 
+- **Phase 3 — replay and the matching ladder.** 8 commits, tagged `v0.4-replay`.
+  - `internal/jsonrpc`: exact id splicing (820 ns, 1 alloc for an 8 KB
+    message), depth-1 only so nested payload ids are never touched.
+  - `internal/safety`: read/write classification, failing closed.
+  - `internal/match`: exact → normalized → method-only ladder, every answer
+    reporting its tier.
+  - `internal/replay`: serves from the tape with **no server process**;
+    spawns one lazily only for read-class misses, fast-forwarding it through
+    the recorded handshake first.
+  - `internal/config`: `cassette.json`.
+  - **Verified:** `make verify-replay`. Every response replayed
+    byte-identically to the live session, 10032 bytes across 5 responses,
+    sha256 `7dcb0ea5...`, with every proxy variable stripped from the
+    environment. Record took 888 ms; hermetic replay took **24 ms**.
+  - **Verified by hand:** an unmatched read-class call falls through to a
+    lazily spawned server (242 ms → 1.017 s, the cost made visible); an
+    unmatched `create_pull_request` stays refused even outside hermetic mode.
+
+### The verification harness was wrong, and finding out was the point
+
+The phase 3 replay check failed. The cause was not in cassette. Running the
+same driver against `@modelcontextprotocol/server-everything` three times:
+
+    run 1  9904 bytes  sha aca5cb5c...
+    run 2  9878 bytes  sha bab38bd4...
+    run 3  9878 bytes  sha bab38bd4...
+
+That server emits `notifications/tools/list_changed` on a timer, so two
+**live** runs do not agree with each other. Comparing whole byte streams was
+measuring the server's jitter. It also means the phase 1 transparency check
+had been passing by luck.
+
+The driver now compares only the response stream, correlated by request id,
+which is the deterministic part. Unprompted notifications are counted and not
+compared, because nothing could make them reproducible.
+
+Worth stating plainly in the README: the world being nondeterministic is the
+premise of this entire project, and it turned up inside the test harness.
+
 ### Measured: CAS1 versus JSON lines
 
 Corpus of 200 calls with 8 KB responses, on arm64.
@@ -430,6 +469,14 @@ Worth keeping, since these are the interview stories.
 - **Recording only tools/call would produce unbootable tapes.** Replay has no
   server process, so `initialize` and `tools/list` must be on the tape too.
   Caught while writing the format, not after.
+- **`initialize` could never match.** Its params carry the agent's own name,
+  version and capabilities, which differ between clients and across versions
+  of one client. Hashing them meant replay refused the very first message and
+  the agent could not start. Fixed with a narrow method-only tier, restricted
+  to an explicit set rather than used as a general fallback. Found by running
+  a real replay, not by reading the code.
+- **Shutdown escalation was gated on the drain it was meant to rescue** (phase
+  1, still the best of these).
 
 ### Decisions made during implementation
 
@@ -449,7 +496,28 @@ Worth keeping, since these are the interview stories.
 
 ### Next action
 
-**Phase 3, replay and the matching ladder.** In order:
+**Phase 4, trajectory diff.** In order:
+
+1. `internal/diff`: weighted edit-distance alignment over two tool-call
+   sequences. Substitution cost from tool equivalence, not name equality.
+2. Verdict classification: identical / same-outcome-different-path /
+   outcome-changed. The middle one is the interesting verdict.
+3. Terminal rendering. The CLI is the primary interface and this is its
+   headline output, so it has to be genuinely good.
+4. **Exit criterion:** changing a system prompt on a real recorded task
+   produces a diff a human agrees with.
+
+What phase 3 already provides for free, from the matcher's own bookkeeping:
+`Unused()` gives recorded calls this run skipped, and the tier counts give
+how loosely each call was matched. Half the diff exists already.
+
+Open question for phase 4: what counts as "the outcome"? For a coding agent
+the honest answer is probably the set of write-class calls made, since those
+are what actually changed the world, with read-class calls treated as path
+rather than outcome. Decide against a real recording rather than in the
+abstract.
+
+Superseded plan for phase 3, kept for reference:
 
 1. `internal/match`: the L0/L1/L2 ladder. L0 and L1 hashes already exist on
    every entry, so build both maps at load and add the tool-bucketed fuzzy

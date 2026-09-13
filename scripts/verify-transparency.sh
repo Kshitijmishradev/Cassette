@@ -32,10 +32,14 @@ echo "wrapped:"
 python3 scripts/mcp_drive.py "$WORK/wrapped.ndjson" "$BIN" wrap -- $SERVER
 
 echo
+# Only the response stream is compared. Unprompted notifications from this
+# server arrive on a timer, so two live runs do not agree with each other and
+# comparing them would test the server's jitter rather than the proxy.
 if cmp -s "$WORK/direct.ndjson" "$WORK/wrapped.ndjson"; then
-  echo "PASS  streams are byte-identical"
-  echo "      $(wc -c < "$WORK/direct.ndjson") bytes, $(wc -l < "$WORK/direct.ndjson") messages"
+  echo "PASS  response streams are byte-identical"
+  echo "      $(wc -c < "$WORK/direct.ndjson") bytes, $(wc -l < "$WORK/direct.ndjson") responses"
   echo "      sha256 $(sha256sum "$WORK/direct.ndjson" | cut -d' ' -f1)"
+  echo "      unprompted notifications: direct $(wc -l < "$WORK/direct.ndjson.notify"), wrapped $(wc -l < "$WORK/wrapped.ndjson.notify") (not compared, timer-driven)"
   exit 0
 fi
 

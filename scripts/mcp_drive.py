@@ -1,46 +1,89 @@
 #!/usr/bin/env python3
-"""Drive a real MCP server over stdio and capture its exact stdout bytes.
+"""Drive an MCP server over stdio and capture what it sent back.
 
-Used to verify that running a server through `cassette wrap` produces a
-byte-identical stream to running it directly.
+Output is split into two files on purpose.
+
+  <out>          responses, keyed and ordered by request id
+  <out>.notify   messages the server sent unprompted
+
+The split exists because of something measured rather than assumed: running
+this against @modelcontextprotocol/server-everything three times produced
+three different byte streams, because that server emits
+notifications/tools/list_changed on a timer. Two *live* runs do not agree
+with each other, so comparing whole streams byte for byte tests the server's
+jitter rather than anything about cassette.
+
+Responses are the deterministic part: each is the server's answer to a
+specific request, correlated by id. That is what a replay must reproduce
+exactly, and that is what the verify scripts compare.
 """
-import subprocess, sys, time, os
+import json
+import os
+import subprocess
+import sys
+import time
 
-MSGS = [
+REQUESTS = [
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"cassette-verify","version":"0"}}}',
-    '{"jsonrpc":"2.0","method":"notifications/initialized"}',
     '{"jsonrpc":"2.0","id":2,"method":"tools/list"}',
     '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hello from cassette"}}}',
     '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"add","arguments":{"a":2,"b":40}}}',
+    '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"echo","arguments":{"message":"second echo"}}}',
 ]
-EXPECTED_RESPONSES = 4
+NOTIFICATION = '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+WANT_IDS = {1, 2, 3, 4, 5}
 
 out_path = sys.argv[1]
 cmd = sys.argv[2:]
 
-p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                     stderr=subprocess.DEVNULL, env=os.environ)
+proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL, env=os.environ)
 
-for m in MSGS:
-    p.stdin.write((m + "\n").encode())
-    p.stdin.flush()
-    time.sleep(0.15)
 
-lines = []
-deadline = time.time() + 20
-while len(lines) < EXPECTED_RESPONSES and time.time() < deadline:
-    line = p.stdout.readline()
+def send(line):
+    proc.stdin.write((line + "\n").encode())
+    proc.stdin.flush()
+
+
+send(REQUESTS[0])
+send(NOTIFICATION)
+for r in REQUESTS[1:]:
+    send(r)
+
+responses = {}
+notifications = []
+deadline = time.time() + 30
+
+while len(responses) < len(WANT_IDS) and time.time() < deadline:
+    line = proc.stdout.readline()
     if not line:
         break
-    lines.append(line)
+    try:
+        msg = json.loads(line)
+    except json.JSONDecodeError:
+        notifications.append(line)
+        continue
+    if isinstance(msg, dict) and msg.get("id") is not None:
+        responses[msg["id"]] = line
+    else:
+        notifications.append(line)
 
-p.stdin.close()
+proc.stdin.close()
 try:
-    p.wait(timeout=10)
+    proc.wait(timeout=10)
 except subprocess.TimeoutExpired:
-    p.kill()
+    proc.kill()
 
 with open(out_path, "wb") as f:
-    f.write(b"".join(lines))
+    for rid in sorted(responses, key=lambda k: (str(type(k)), k)):
+        f.write(responses[rid])
 
-print(f"captured {len(lines)} messages, {sum(len(l) for l in lines)} bytes, exit={p.returncode}")
+with open(out_path + ".notify", "wb") as f:
+    f.writelines(notifications)
+
+missing = sorted(WANT_IDS - set(responses))
+print(f"responses {len(responses)}/{len(WANT_IDS)}"
+      f"  bytes {sum(len(v) for v in responses.values())}"
+      f"  unprompted {len(notifications)}"
+      + (f"  MISSING {missing}" if missing else ""))
+sys.exit(1 if missing else 0)

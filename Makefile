@@ -61,6 +61,13 @@ check: fmt-check vet test ## Everything CI runs
 verify-transparency: build ## Diff a real MCP server run direct vs wrapped
 	./scripts/verify-transparency.sh
 
+.PHONY: verify-replay
+verify-replay: build ## Diff a live session against its hermetic replay
+	./scripts/verify-replay.sh
+
+.PHONY: verify
+verify: verify-transparency verify-replay ## Both end-to-end verifications
+
 # Release matrix. macOS arm64 first because that is where agents actually run.
 PLATFORMS := darwin/arm64 darwin/amd64 linux/arm64 linux/amd64
 

@@ -20,6 +20,7 @@ func App() *cli.App {
 	a.Register(wrapCmd())
 	a.Register(recordCmd())
 	a.Register(replayCmd())
+	a.Register(inspectCmd())
 	a.Register(testCmd())
 	a.Register(serveCmd())
 	a.Register(exportCmd())

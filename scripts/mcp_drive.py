@@ -31,7 +31,17 @@ REQUESTS = [
     '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"echo","arguments":{"message":"second echo"}}}',
 ]
 NOTIFICATION = '{"jsonrpc":"2.0","method":"notifications/initialized"}'
-WANT_IDS = {1, 2, 3, 4, 5}
+
+# CASSETTE_DRIVE_EXTRA adds a further tool call, so a suite can contain
+# cassettes that genuinely exercise different tools. Without that, every
+# analytical query that compares tool usage across runs has nothing to find.
+_extra = os.environ.get("CASSETTE_DRIVE_EXTRA", "")
+if _extra:
+    REQUESTS.append(
+        '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"%s","arguments":{}}}' % _extra
+    )
+
+WANT_IDS = set(range(1, len(REQUESTS) + 1))
 
 out_path = sys.argv[1]
 cmd = sys.argv[2:]

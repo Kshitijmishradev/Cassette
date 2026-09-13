@@ -65,8 +65,12 @@ verify-transparency: build ## Diff a real MCP server run direct vs wrapped
 verify-replay: build ## Diff a live session against its hermetic replay
 	./scripts/verify-replay.sh
 
+.PHONY: verify-clickhouse
+verify-clickhouse: build ## Load an export into ClickHouse and run every query
+	./scripts/verify-clickhouse.sh
+
 .PHONY: verify
-verify: verify-transparency verify-replay ## Both end-to-end verifications
+verify: verify-transparency verify-replay verify-clickhouse ## Every end-to-end verification
 
 .PHONY: bench-suite
 bench-suite: build ## Measure live sessions vs serial and parallel replay

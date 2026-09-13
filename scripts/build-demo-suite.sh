@@ -18,9 +18,19 @@ SERVER=${CASSETTE_TEST_SERVER_CMD:-"npx -y @modelcontextprotocol/server-everythi
 rm -rf "$SUITE"
 
 echo "recording $COUNT cassettes into $SUITE"
+# EXTRA_EVERY makes every Nth cassette exercise an additional tool, so the
+# suite is not uniform. A suite where every case is identical cannot
+# demonstrate any query that compares tool usage across runs.
+EXTRA_TOOL=${EXTRA_TOOL:-printEnv}
+EXTRA_EVERY=${EXTRA_EVERY:-0}
+
 for i in $(seq 1 "$COUNT"); do
   name=$(printf "case-%02d" "$i")
-  "$BIN" record "$name" --suite "$SUITE" -- \
+  extra=""
+  if [ "$EXTRA_EVERY" -gt 0 ] && [ $((i % EXTRA_EVERY)) -eq 0 ]; then
+    extra="$EXTRA_TOOL"
+  fi
+  CASSETTE_DRIVE_EXTRA="$extra" "$BIN" record "$name" --suite "$SUITE" -- \
     python3 scripts/mcp_drive.py /dev/null \
     "$BIN" wrap -- $SERVER >/dev/null 2>&1
   printf "."

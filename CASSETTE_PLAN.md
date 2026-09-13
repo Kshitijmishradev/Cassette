@@ -46,7 +46,7 @@ Secondary problems it solves along the way:
 | Decision | Choice | Why |
 |---|---|---|
 | Proxy language | **Go** | Single static binary, trivial stdio pumping, mmap, cheap concurrency for the suite runner |
-| Analytics engine | **chDB (embedded ClickHouse) via chdb-go** | Real ClickHouse SQL and MergeTree with zero ops, zero cost, works offline, ships in the binary. Accepts a cgo dependency |
+| Analytics engine | ~~chDB embedded~~ → **export to ClickHouse** | Reversed in phase 6. chdb-go needs `golang.org/x/sys`, which this network blocks, but the decision stands on merit: embedding costs cgo, the static binary, and the cross-compile matrix, to serve a weekly query path. The schema is still ours and now runs against clickhouse-local, self-hosted, or Cloud unchanged |
 | Demo subject | **Coding agent (Claude Code on a real OSS repo)** | Instantly legible to any engineer, no fake data to invent, recognizable tool calls |
 | Product shape | **Local-first CLI, not a SaaS** | Cassettes contain production data and secrets. Nobody uploads those. Local-first is the only adoptable architecture, and it is free to run |
 | Cassette storage | **Committed to git alongside the code** | They are test fixtures. Reviewable in PRs, diffable, and CI needs zero infrastructure |
@@ -326,7 +326,7 @@ toolchain.
 
 ### Current phase
 
-**Phase 5 complete** (tag `v0.6-suite`). Phase 6 is next.
+**Phase 6 complete** (tag `v0.7-analytics`). Phase 7 is next.
 
 ### Completed
 
@@ -422,6 +422,31 @@ toolchain.
   - `cassette test` with `--jobs`, `--fail-on`, `--hermetic`.
   - **Verified:** a 12-cassette suite with 3 deliberately altered cases
     reports 9 ok / 3 CHANGED and exits 1.
+
+- **Phase 6 — ClickHouse analytics.** 3 commits, tagged `v0.7-analytics`.
+  - `internal/chexport`: schema, queries, JSONEachRow export, `load.sh`.
+  - `cassette export --clickhouse`.
+  - **Verified against ClickHouse 26.8.3**, not asserted. `make verify-clickhouse`.
+
+### Measured: the analytics layer, run for real
+
+12-cassette suite, 87 spans, 150 payloads, 11 KB exported.
+
+```
+tool       calls  p50_ms  p95_ms        identical drift changed served pct_exact
+echo          24   551.3   643.8                9     0       3     60       100
+add           12   551.2   637.8
+printEnv       3   545.8   554.5        tool      in_failing in_passing
+                                        printEnv           3          0
+```
+
+The last table is the query the schema exists for: every run that changed
+called `printEnv`, no passing run ever did. Not "something broke" but "runs
+that broke all did this, and runs that passed never did".
+
+The rollup's merged p95 matches the raw scan exactly, which the verification
+asserts, because a materialized view that silently diverges from its source
+makes every dashboard built on it lie.
 
 ### Measured: what replay actually buys
 
@@ -537,6 +562,20 @@ Worth keeping, since these are the interview stories.
   a real replay, not by reading the code.
 - **Shutdown escalation was gated on the drain it was meant to rescue** (phase
   1, still the best of these).
+- **The rollup would have silently returned wrong counts.** `calls` and
+  `errors` were plain `UInt64` in an `AggregatingMergeTree`. Background merges
+  collapse rows sharing a sorting key and keep an arbitrary value for plain
+  columns, so the table looks correct after insert and goes wrong after a
+  merge: silent, delayed, unreproducible on small data. ClickHouse refuses the
+  DDL outright, which is how it was found. Fixed with
+  `SimpleAggregateFunction(sum, UInt64)`.
+- **Two definitions of "changed" in one codebase.** The export re-derived a
+  verdict from report counters instead of using the diff, disagreed with
+  `cassette test` on the first real suite, and silently emptied the query that
+  asks what failing runs do differently.
+- **A uniform demo suite cannot demonstrate a comparison.** The first run of
+  the failing-versus-passing query returned nothing because every cassette
+  used the same tools. Fixed the harness, not the query.
 
 ### Decisions made during implementation
 
@@ -556,7 +595,26 @@ Worth keeping, since these are the interview stories.
 
 ### Next action
 
-**Phase 6, chDB analytics.** In order:
+**Phase 7, the web UI.** In order:
+
+1. React + Vite, built and embedded with `go:embed` so `cassette serve` stays
+   one binary with no node runtime.
+2. Four screens: runs list, run waterfall with match-tier badges, trajectory
+   diff (the hero, polish this most), suite grid.
+3. Deliberately no metrics dashboard. That space is saturated and building one
+   would make the project look like a clone.
+4. **Exit criterion:** all four screens work against real local data and the
+   diff screen is good enough to be the README gif.
+
+Everything the UI needs already exists as structured data: `record.OpenRun`
+gives the merged trajectory, `replay.Report` gives per-call tiers,
+`diff.Compare` gives the alignment and verdict. The UI is a presentation layer
+over APIs that already work, which is the right order to have built them in.
+
+Note: node and npm work in this environment (the npm registry is reachable),
+so the Vite build is buildable here, unlike chDB.
+
+Superseded plan for phase 6, kept for reference:
 
 1. chDB via `chdb-go` behind a build tag, so the default build stays pure Go
    and dependency-free and only the analytics build pulls cgo.

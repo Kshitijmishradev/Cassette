@@ -326,7 +326,7 @@ toolchain.
 
 ### Current phase
 
-**Phase 1 complete** (tag `v0.2-proxy`). Phase 2 is next.
+**Phase 2 complete** (tag `v0.3-record`). Phase 3 is next.
 
 ### Completed
 
@@ -374,6 +374,38 @@ toolchain.
     passes through, a 2 MB payload survives a round trip, an invalid
     `CASSETTE_MODE` is rejected rather than silently ignored.
 
+- **Phase 2 — recording and CAS1.** 14 commits, tagged `v0.3-record`.
+  - `internal/tape`: CAS1 format, writer with atomic assembly, mmap reader
+    with all offsets validated up front (the index is reached via an unsafe
+    cast, so a corrupt tape must fail to open rather than hand out slices
+    into nothing).
+  - `internal/record`: recorder as a `proxy.Observer`, per-server tape naming,
+    run manifest, cross-tape trajectory merge.
+  - `record` and `inspect` commands.
+  - **Verified:** a real MCP session recorded end to end. 6 messages, 2 tool
+    calls, including an unprompted `notifications/tools/list_changed` from
+    the server, which is what justified the `EntryServerInitiated` flag.
+
+### Measured: CAS1 versus JSON lines
+
+Corpus of 200 calls with 8 KB responses, on arm64.
+
+| | CAS1 | JSONL |
+|---|---|---|
+| load time | 6.9 µs | 3.58 ms |
+| load allocs | 5.5 KB, 9 | 4.9 MB, 1013 |
+| lookup | 6.8 ns, 0 allocs | 8.6 ns, 0 allocs |
+| heap after load | ~0 (page cache) | 1.96 MB |
+| projected at 50 workers | one shared 1.6 MB mapping | ~93 MB heap, nothing shared |
+
+The honest finding: **lookup is a wash.** Once a map is built, a map is a
+map. CAS1 wins on load, 520x in time and 900x in memory, because it decodes
+nothing to become usable. That is what suite scale is made of, since replays
+are independent processes and only the mapped form is shared by the kernel.
+
+Which is where the design started: reads were never the bottleneck, so the
+format only had to avoid allocating.
+
 ### Bugs found by tests rather than by reasoning
 
 Worth keeping, since these are the interview stories.
@@ -388,6 +420,16 @@ Worth keeping, since these are the interview stories.
   allocation, hiding the per-message number entirely.
 - **Overbroad gitignore.** A bare `cassette` pattern matched the
   `cmd/cassette` package directory, not just the built binary.
+- **Flags after positionals were silently dropped.** Go's `flag` stops at the
+  first non-flag argument, so `cassette record demo --suite /tmp/x` parsed as
+  three positionals and `--suite` kept its default while the command appeared
+  to work. Found by typing the command, not by reading the code.
+- **Tape naming took the last argument** and named a real recording `stdio`,
+  the transport selector. Arguments trail the thing they configure, so the
+  scan had to go forward, not backward.
+- **Recording only tools/call would produce unbootable tapes.** Replay has no
+  server process, so `initialize` and `tools/list` must be on the tape too.
+  Caught while writing the format, not after.
 
 ### Decisions made during implementation
 
@@ -407,7 +449,33 @@ Worth keeping, since these are the interview stories.
 
 ### Next action
 
-**Phase 2, recording and the CAS1 format.** In order:
+**Phase 3, replay and the matching ladder.** In order:
+
+1. `internal/match`: the L0/L1/L2 ladder. L0 and L1 hashes already exist on
+   every entry, so build both maps at load and add the tool-bucketed fuzzy
+   tier behind them.
+2. Tool safety classification (read vs write) with default-deny, plus the
+   `cassette.json` config that carries the allowlist.
+3. `internal/replay`: serve matched calls from the tape with **no child
+   process at all**. Patch the JSON-RPC id in place and write the mmap slice.
+4. Emit server-initiated entries unprompted at the right point in the
+   trajectory.
+5. Wire `replay`; report the match tier per call.
+6. **Exit criterion:** a recorded session replays end to end with network
+   access blocked entirely, the agent completes, and every call reports which
+   tier served it.
+
+Open question for phase 3, decide while building: id rewriting. The agent
+will not necessarily reuse the same JSON-RPC ids on a second run, so the
+recorded response's id has to be replaced with the live request's. The
+format anticipates patching in place, which requires the id field to be at a
+fixed width. It is not today, so either the writer normalizes ids at record
+time (changing the stored bytes, which weakens the byte-transparency claim)
+or replay does one small copy per response. Leaning toward the copy: it is
+one allocation against a 1.5 s model turn, and keeping recorded bytes exactly
+as they arrived is worth more than the nanoseconds.
+
+Superseded plan for phase 2, kept for reference:
 
 1. `internal/tape`: CAS1 writer. Blobs stored pre-framed (message plus
    newline), fixed-width 32-byte index entries, string table, optional vector

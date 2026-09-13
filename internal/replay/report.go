@@ -28,6 +28,10 @@ type Report struct {
 	Notifies    int            `json:"notifications"`
 	Unused      int            `json:"unused"`
 	Misses      []Miss         `json:"misses,omitempty"`
+
+	// Calls is the trajectory this run produced, which is what a diff
+	// compares against the tape.
+	Calls []Call `json:"calls,omitempty"`
 }
 
 // NewReport converts a result into its serializable form.
@@ -46,6 +50,7 @@ func NewReport(tapeName string, r Result) Report {
 		Notifies:    r.Notifies,
 		Unused:      len(r.Unused),
 		Misses:      r.Misses,
+		Calls:       r.Calls,
 	}
 }
 

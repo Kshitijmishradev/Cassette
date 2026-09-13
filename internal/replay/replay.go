@@ -62,8 +62,24 @@ type Miss struct {
 	Resolved string // "live", "refused"
 }
 
+// Call is one request the agent made during replay, in order.
+//
+// Recorded so the run can be diffed against the tape afterwards. Without it
+// replay could say how many calls it served but not which ones, and the
+// sequence is the entire subject of a trajectory diff.
+type Call struct {
+	Method   string `json:"method"`
+	Tool     string `json:"tool,omitempty"`
+	ArgsHash uint64 `json:"argsHash"`
+	Args     string `json:"args,omitempty"`
+	Tier     string `json:"tier"`
+	Missed   bool   `json:"missed,omitempty"`
+}
+
 // Result summarizes what happened.
 type Result struct {
+	// Calls is the trajectory: every request in the order it was made.
+	Calls       []Call
 	Served      int
 	ByTier      map[match.Tier]int
 	Repeats     int
@@ -147,6 +163,21 @@ func (e *engine) serve(ctx context.Context) error {
 func (e *engine) handle(msg []byte, env jsonrpc.Envelope) error {
 	method, tool, args := describe(msg, env)
 	res := e.matcher.Match(method, args)
+
+	// Notifications are not part of the trajectory. They carry no decision:
+	// the agent is announcing something, not choosing to do something, and
+	// including them would add noise to every diff without ever changing a
+	// verdict.
+	if env.HasID() {
+		e.result.Calls = append(e.result.Calls, Call{
+			Method:   method,
+			Tool:     tool,
+			ArgsHash: tape.HashNorm(method, args),
+			Args:     preview(args),
+			Tier:     res.Tier.String(),
+			Missed:   !res.Found,
+		})
+	}
 
 	// A notification expects nothing back. Matching it still matters: it
 	// marks the recording as used, so the unused-entry report does not claim

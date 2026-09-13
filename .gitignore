@@ -1,0 +1,22 @@
+# build output
+/bin/
+/dist/
+cassette
+cassette-*
+
+# local state (cassettes themselves ARE committed, see CASSETTE_PLAN.md §3)
+.cassette/analytics/
+.cassette/tmp/
+*.cas.tmp
+
+# go
+*.test
+*.out
+coverage.*
+
+# node (web UI, phase 7)
+node_modules/
+web/dist/
+
+# os
+.DS_Store

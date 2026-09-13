@@ -1,8 +1,8 @@
 # build output
 /bin/
 /dist/
-cassette
-cassette-*
+/cassette
+/cassette-*
 
 # local state (cassettes themselves ARE committed, see CASSETTE_PLAN.md §3)
 .cassette/analytics/

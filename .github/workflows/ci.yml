@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: true
+
+      # No module download step: this project has no dependencies, and that
+      # is worth keeping true. If go.sum ever appears, it should be because
+      # someone argued for it in a PR.
+      - name: Verify there are still no dependencies
+        run: |
+          if [ -s go.sum ]; then
+            echo "go.sum is non-empty; cassette is meant to build from stdlib only."
+            echo "If a dependency is genuinely warranted, remove this check in the same PR and say why."
+            exit 1
+          fi
+
+      - name: Format
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "unformatted:"; echo "$out"; exit 1; fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Test with race detector
+        run: go test -race ./...
+
+      - name: Build
+        run: make build
+
+  cross-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - name: Cross-compile the release matrix
+        run: make dist

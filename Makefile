@@ -68,6 +68,10 @@ verify-replay: build ## Diff a live session against its hermetic replay
 .PHONY: verify
 verify: verify-transparency verify-replay ## Both end-to-end verifications
 
+.PHONY: bench-suite
+bench-suite: build ## Measure live sessions vs serial and parallel replay
+	./scripts/bench-suite.sh
+
 # Release matrix. macOS arm64 first because that is where agents actually run.
 PLATFORMS := darwin/arm64 darwin/amd64 linux/arm64 linux/amd64
 

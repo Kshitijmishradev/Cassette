@@ -326,7 +326,7 @@ toolchain.
 
 ### Current phase
 
-**Phase 4 complete** (tag `v0.5-diff`). Phase 5 is next.
+**Phase 5 complete** (tag `v0.6-suite`). Phase 6 is next.
 
 ### Completed
 
@@ -416,6 +416,33 @@ toolchain.
   - **Verified:** an unchanged re-run reports `identical`; a genuinely
     different agent against the same tape renders a readable side-by-side and
     exits non-zero.
+
+- **Phase 5 — suite runner and parallelism.** 4 commits, tagged `v0.6-suite`.
+  - `internal/suite`: discovery, parallel worker pool, per-case capture.
+  - `cassette test` with `--jobs`, `--fail-on`, `--hermetic`.
+  - **Verified:** a 12-cassette suite with 3 deliberately altered cases
+    reports 9 ok / 3 CHANGED and exits 1.
+
+### Measured: what replay actually buys
+
+12 cassettes, 4 cores. Reproduce with `make bench-suite`.
+
+| | wall clock | vs live |
+|---|---|---|
+| live sessions | 11.20 s | 1x |
+| replay, serial | 0.25 s | 45x |
+| replay, parallel | 0.08 s | **147x** |
+
+Parallel over serial is 3.3x on 4 cores, close to the ceiling, which is what
+you get when cases share no external resource.
+
+**State this carefully in the README.** The 147x is the cost of the
+*environment*, not of a whole agent. The driver issues a fixed sequence of
+requests; it is not a model deciding what to do next, and a real agent
+replaying a tape still pays for inference every turn. The narrow, true claim:
+replay removes the environment's cost almost entirely and removes every side
+effect. What remains is model time, which is also where parallelism helps
+most, since replayed cases have nothing to contend over.
 
 ### Two bugs the end-to-end run caught that unit tests could not
 
@@ -529,7 +556,27 @@ Worth keeping, since these are the interview stories.
 
 ### Next action
 
-**Phase 5, suite runner and parallelism.** In order:
+**Phase 6, chDB analytics.** In order:
+
+1. chDB via `chdb-go` behind a build tag, so the default build stays pure Go
+   and dependency-free and only the analytics build pulls cgo.
+2. Schema: narrow spans table ordered by `(project, tool_name, started_at)`,
+   payloads out of line keyed by span id, materialized view for daily
+   rollups.
+3. An ingest path that walks a suite's tapes into it.
+4. The three queries that justify it: per-tool p95 latency, match-tier hit
+   rates across runs, and calls present in failing trajectories but absent
+   from passing ones.
+5. **Exit criterion:** those three queries run against real recorded data and
+   return something a human finds interesting.
+
+Open question to settle while building: chdb-go is cgo, which breaks the
+single static binary and the clean cross-compile matrix. A build tag keeps
+the default build clean, but then the analytics feature is not in the
+released binary at all. The alternative is shipping two binaries. Decide once
+the cgo build is actually working, not before.
+
+Superseded plan for phase 5, kept for reference:
 
 1. `internal/suite`: worker pool, one replay process per cassette. Replays
    touch nothing external and share no state, so they are embarrassingly

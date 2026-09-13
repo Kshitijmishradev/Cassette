@@ -57,6 +57,10 @@ fmt-check: ## Fail if any file is unformatted
 .PHONY: check
 check: fmt-check vet test ## Everything CI runs
 
+.PHONY: verify-transparency
+verify-transparency: build ## Diff a real MCP server run direct vs wrapped
+	./scripts/verify-transparency.sh
+
 # Release matrix. macOS arm64 first because that is where agents actually run.
 PLATFORMS := darwin/arm64 darwin/amd64 linux/arm64 linux/amd64
 

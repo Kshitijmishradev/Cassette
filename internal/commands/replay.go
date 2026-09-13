@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"github.com/Kshitijmishradev/cassette/internal/cli"
+	"github.com/Kshitijmishradev/cassette/internal/config"
+	"github.com/Kshitijmishradev/cassette/internal/diff"
 	"github.com/Kshitijmishradev/cassette/internal/env"
 	"github.com/Kshitijmishradev/cassette/internal/record"
 	"github.com/Kshitijmishradev/cassette/internal/replay"
+	"github.com/Kshitijmishradev/cassette/internal/tape"
 )
 
 func replayCmd() *cli.Command {
@@ -44,6 +47,9 @@ anyone thought they were running.`,
 		Flags: func(fs *flag.FlagSet) {
 			fs.String("suite", "./cassettes", "directory holding recorded runs")
 			fs.Bool("hermetic", false, "refuse every miss; never spawn a live server")
+			fs.String("fail-on", "outcome", "fail when behavior changed: outcome, path, or never")
+			fs.Bool("no-diff", false, "skip the trajectory diff")
+			fs.Int("context", 1, "identical calls to show around each difference")
 		},
 		Run: runReplayCommand,
 	}
@@ -122,18 +128,81 @@ func runReplayCommand(ctx *cli.Context) error {
 		return cli.Failuref("nothing was replayed")
 	}
 
-	var refused, fell int
+	worst := diff.VerdictIdentical
+	if ctx.Flags.Lookup("no-diff").Value.String() != "true" {
+		worst, err = renderDiffs(ctx, dir, reports)
+		if err != nil {
+			return err
+		}
+	}
+
+	var refused int
 	for _, r := range reports {
 		refused += r.Refused
-		fell += r.FellThrough
 	}
 	if refused > 0 {
 		return cli.Failuref("%d call(s) had no recording and could not be run safely", refused)
 	}
+
+	switch ctx.Flags.Lookup("fail-on").Value.String() {
+	case "never":
+	case "path":
+		if worst != diff.VerdictIdentical {
+			return cli.Failuref("behavior changed: %s", worst)
+		}
+	default: // outcome
+		if worst == diff.VerdictOutcomeChanged {
+			return cli.Failuref("behavior changed: %s", worst)
+		}
+	}
+
 	if exitCode != 0 {
 		return &cli.ExitCodeError{Code: exitCode}
 	}
 	return nil
+}
+
+// renderDiffs compares each replayed tape against its recording and returns
+// the most severe verdict seen.
+func renderDiffs(ctx *cli.Context, dir string, reports []replay.Report) (diff.Verdict, error) {
+	cfg, _, err := config.Load(".")
+	if err != nil {
+		return diff.VerdictIdentical, err
+	}
+	classifier := cfg.Classifier()
+
+	context := 1
+	fmt.Sscanf(ctx.Flags.Lookup("context").Value.String(), "%d", &context)
+
+	worst := diff.VerdictIdentical
+	for _, rep := range reports {
+		rd, err := tape.Open(filepath.Join(dir, rep.Tape+".cas"))
+		if err != nil {
+			return worst, err
+		}
+
+		d := diff.Compare(
+			diff.FromTape("recorded", rd, classifier),
+			diff.FromReport("this run", rep, classifier),
+		)
+		rd.Close()
+
+		if d.Verdict > worst {
+			worst = d.Verdict
+		}
+
+		// An identical trajectory needs one line, not a table. Printing a
+		// full side-by-side of a run that did not change is noise that
+		// trains people to skip the output.
+		if !d.Changed() {
+			fmt.Fprintf(ctx.Err, "\n  %s: %s\n", rep.Tape, d.Summary())
+			continue
+		}
+
+		fmt.Fprintf(ctx.Err, "\n  %s\n\n", rep.Tape)
+		diff.Render(ctx.Err, d, diff.RenderOptions{Width: 38, Context: context})
+	}
+	return worst, nil
 }
 
 func printReplaySummary(ctx *cli.Context, reports []replay.Report, wall time.Duration) {

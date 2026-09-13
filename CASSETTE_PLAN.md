@@ -116,10 +116,11 @@ with a single cast and payloads are never parsed.
 
 Three invariants that must not be broken:
 
-1. **Blobs are stored pre-framed** (`Content-Length: N\r\n\r\n{...}`) exactly
-   as they go back on the wire. Replay is one `write()` of an mmap slice.
-   Zero parse, zero allocation. The JSON-RPC `id` is padded to fixed width at
-   record time and patched in place.
+1. **Blobs are stored pre-framed** exactly as they go back on the wire, which
+   on the MCP stdio transport means the JSON message plus its trailing
+   newline. Replay is one `write()` of an mmap slice. Zero parse, zero
+   allocation. The JSON-RPC `id` is padded to fixed width at record time and
+   patched in place.
 2. **The proxy only parses the envelope** (`id`, `method`, `params.name`,
    `params.arguments`). It never unmarshals a response payload.
 3. **Embeddings are computed at RECORD time**, not replay time. Recording is
@@ -129,6 +130,30 @@ Budget check that justifies all of this: a lookup is ~80ns, a model turn is
 ~1.5s. Ratio ~20,000,000:1. Reads are not the bottleneck, so the format only
 has to avoid allocating. Do not build a filesystem. Do not put the replay hot
 path in a database.
+
+### Correction: transport framing
+
+The plan originally specified Content-Length framing. That is **wrong**, and
+it is LSP's framing, not MCP's. The MCP stdio transport is newline-delimited
+JSON: one message per line, and messages **MUST NOT** contain embedded
+newlines. Verified against the spec before writing phase 1.
+
+Consequences, all of them good:
+- A "pre-framed blob" is just the message bytes plus `\n`. Simpler than planned.
+- Line splitting is safe precisely because embedded newlines are forbidden.
+- No header layer to parse, so the reader is a bufio loop rather than a state
+  machine.
+
+Other normative rules from the same spec page that constrain the proxy:
+- The server MAY write anything to stderr, and the client MUST NOT assume
+  stderr means an error. So stderr is passed through untouched, never parsed.
+- The server MUST NOT write non-MCP output to stdout.
+- Shutdown is: close the child's stdin, wait, then escalate SIGTERM to
+  SIGKILL. Servers SHOULD exit when stdin reaches EOF. The proxy has
+  interposed itself, so it must honor this discipline in both directions:
+  the real client will do it to us, and we must do it to the child.
+
+Source: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio
 
 ## 6. Matching ladder
 
@@ -168,7 +193,7 @@ advance until it passes. Verify with real runs, not assertions on paper.
 - **Done when:** `cassette --help` runs from a release binary on macOS.
 
 ### Phase 1 — Transparent proxy
-- stdio JSON-RPC framing reader/writer (Content-Length framed)
+- stdio JSON-RPC framing reader/writer (newline-delimited, per the MCP spec)
 - bidirectional pump, spawn child MCP server, forward both directions
 - envelope-only parsing, everything else passes through untouched
 - **Done when:** Claude Code configured to use `cassette wrap -- <server>`
@@ -345,7 +370,7 @@ toolchain.
 
 **Phase 1, the transparent proxy.** In order:
 
-1. `internal/jsonrpc`: Content-Length framing reader/writer, envelope-only
+1. `internal/jsonrpc`: newline-delimited framing reader/writer, envelope-only
    parsing (`id`, `method`, `params.name`, `params.arguments`), everything
    else passed through as opaque bytes
 2. `internal/proxy`: spawn the child MCP server, pump both directions,

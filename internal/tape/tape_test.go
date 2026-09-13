@@ -385,3 +385,40 @@ func TestAppendAfterCloseFails(t *testing.T) {
 		t.Error("want an error appending after close")
 	}
 }
+
+// Names must outlive the reader. An earlier version returned strings
+// pointing into the mapping, and building a value object from a tape then
+// closing the reader before rendering it segfaulted. Blobs are still
+// borrowed, which is where the megabytes are; names are not worth a
+// use-after-free.
+func TestNamesSurviveClose(t *testing.T) {
+	path := writeTape(t, sampleRecords())
+
+	r, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type held struct{ method, tool string }
+	var kept []held
+	for i := range r.Len() {
+		kept = append(kept, held{r.Method(i), r.ToolName(i)})
+	}
+
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reading these after the mapping is gone must be safe and correct.
+	want := []held{
+		{"initialize", ""},
+		{"notifications/initialized", ""},
+		{"tools/call", "read_file"},
+		{"tools/call", "read_file"},
+	}
+	for i, w := range want {
+		if kept[i].method != w.method || kept[i].tool != w.tool {
+			t.Errorf("entry %d after close = %+v, want %+v", i, kept[i], w)
+		}
+	}
+}

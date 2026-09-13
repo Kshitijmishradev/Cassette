@@ -4,15 +4,19 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strings"
 	"unsafe"
 )
 
 // Reader gives read access to a tape.
 //
-// Every slice and string it returns points into the memory mapping and stays
-// valid only until Close. Nothing is copied on the way out, which is the
-// whole reason the format exists: serving a recorded response is a hash
-// lookup and a write, with no allocation in between.
+// Request and Response return slices pointing into the memory mapping, valid
+// only until Close. That is the whole reason the format exists: serving a
+// recorded response is a hash lookup and a write, with no allocation in
+// between, and those are the payloads where copying would cost megabytes.
+//
+// Method and ToolName do copy. The distinction is deliberate and was learned
+// the hard way, see the comment on Method.
 type Reader struct {
 	path    string
 	data    []byte
@@ -206,16 +210,26 @@ func (r *Reader) blob(off, length uint32) []byte {
 }
 
 // Method returns the method name for entry i.
-func (r *Reader) Method(i int) string { return r.str(r.entries[i].MethodID) }
+//
+// Unlike Request and Response, this returns an owned copy that stays valid
+// after Close.
+//
+// An earlier version returned a string pointing into the mapping, which
+// segfaulted the moment a caller built a value object from a tape and closed
+// the reader before rendering it. The borrowed-slice contract is reasonable
+// for blobs, where the payoff is megabytes not copied per call. For an
+// interned name it saved perhaps twenty nanoseconds and bought a
+// use-after-free, in a tool whose entire purpose is being trustworthy. Bad
+// trade, removed.
+func (r *Reader) Method(i int) string { return strings.Clone(r.str(r.entries[i].MethodID)) }
 
 // ToolName returns the tool name for entry i, empty when not a tool call.
-func (r *Reader) ToolName(i int) string { return r.str(r.entries[i].ToolID) }
+// Owned, like Method.
+func (r *Reader) ToolName(i int) string { return strings.Clone(r.str(r.entries[i].ToolID)) }
 
-// str decodes an interned string at the given table offset.
-//
-// The result points into the mapping rather than copying. Names are read on
-// every lookup during replay, and at a few thousand calls per run an
-// allocation each would be pure waste.
+// str decodes an interned string at the given table offset, borrowed from
+// the mapping. Callers outside this file go through Method and ToolName,
+// which copy.
 func (r *Reader) str(off uint32) string {
 	buf := r.data[r.stringsOff:r.header.VectorsOff]
 	if uint64(off) >= uint64(len(buf)) {

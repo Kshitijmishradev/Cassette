@@ -326,7 +326,7 @@ toolchain.
 
 ### Current phase
 
-**Phase 0 complete** (tag `v0.1-scaffold`). Phase 1 is next.
+**Phase 1 complete** (tag `v0.2-proxy`). Phase 2 is next.
 
 ### Completed
 
@@ -350,6 +350,45 @@ toolchain.
     work from a stamped release build, usage errors and phase gates return the
     right exit codes.
 
+- **Phase 1 — transparent proxy.** 10 commits, tagged `v0.2-proxy`.
+  - `internal/jsonrpc`: newline-delimited framing. `ReadMessage` returns
+    borrowed bytes valid until the next call, so a megabyte tool result is not
+    copied on every hop; callers that retain must copy, which puts the cost at
+    the call site. Measured zero allocations per message in steady state on
+    both read and write.
+  - `internal/jsonrpc`: two-stage envelope parsing. Stage one omits `params`
+    and `result` so encoding/json walks and discards payloads without
+    materializing them; stage two runs only for `tools/call`, which are small.
+    Allocation is flat at 72 B across a 512x payload range.
+  - `internal/proxy`: bidirectional pump, stderr passed through by file
+    descriptor, unparseable messages forwarded anyway, observers wrapped in
+    recover, forwarding always ahead of observation.
+  - Shutdown ladder: close child stdin, wait, SIGTERM, wait, SIGKILL, with
+    the drain completing before `cmd.Wait` (which closes the stdout pipe).
+  - `wrap` wired up; passthrough uses a nil observer so nothing is parsed.
+  - **Verified:** a real MCP server (`@modelcontextprotocol/server-everything`)
+    driven through initialize, tools/list and two tools/call requests produces
+    a byte-identical stream direct vs wrapped. 9878 bytes, sha256
+    `bab38bd4...`. Reproduce with `make verify-transparency`.
+  - Also verified by hand: exit status propagates (7 stays 7), child stderr
+    passes through, a 2 MB payload survives a round trip, an invalid
+    `CASSETTE_MODE` is rejected rather than silently ignored.
+
+### Bugs found by tests rather than by reasoning
+
+Worth keeping, since these are the interview stories.
+
+- **Shutdown deadlock.** Reaping the child was gated on both pumps
+  finishing. That deadlocks against exactly the case escalation exists for: a
+  server ignoring stdin close never closes stdout, so the drain never
+  completes and the SIGTERM never fires. A rescue timer must not depend on
+  the thing it is rescuing. Caught by a test that hung for 60 seconds.
+- **Benchmark measuring the wrong thing.** The first framing benchmark built
+  a new Reader per iteration and charged every run for a 256 KiB bufio
+  allocation, hiding the per-message number entirely.
+- **Overbroad gitignore.** A bare `cassette` pattern matched the
+  `cmd/cassette` package directory, not just the built binary.
+
 ### Decisions made during implementation
 
 - **Config file is `cassette.json`, not YAML.** No stdlib YAML parser, and
@@ -368,14 +407,29 @@ toolchain.
 
 ### Next action
 
-**Phase 1, the transparent proxy.** In order:
+**Phase 2, recording and the CAS1 format.** In order:
 
-1. `internal/jsonrpc`: newline-delimited framing reader/writer, envelope-only
-   parsing (`id`, `method`, `params.name`, `params.arguments`), everything
-   else passed through as opaque bytes
-2. `internal/proxy`: spawn the child MCP server, pump both directions,
-   forward stderr, propagate exit codes and signals
-3. wire `wrap` to it
-4. **Exit criterion:** Claude Code configured with
-   `cassette wrap -- <server>` behaves identically to using the server
-   directly, across a full real task. Zero observable difference is the bar.
+1. `internal/tape`: CAS1 writer. Blobs stored pre-framed (message plus
+   newline), fixed-width 32-byte index entries, string table, optional vector
+   section.
+2. `internal/tape`: reader. mmap, index cast at load, zero-copy blob access.
+3. `internal/record`: an `proxy.Observer` that correlates request to response
+   by id and appends to the tape. Must copy the borrowed bytes, and must not
+   do real work inline on the forwarding path.
+4. `record` command: set `CASSETTE_MODE`/`CASSETTE_TAPE` on the agent process
+   and run it.
+5. Benchmark harness against a naive JSON-lines implementation.
+6. **Exit criterion:** a real agent session records to a `.cas` file, and
+   `go test -bench` reports lookup latency and the memory delta versus JSONL.
+   Put the actual numbers in the Measured section above.
+
+Open questions to settle in phase 2:
+
+- Multiple MCP servers under one agent run share a `CASSETTE_RUN_ID` but are
+  separate processes writing concurrently. One tape per server with a
+  manifest, or one shared tape with file locking? Leaning toward per-server
+  tapes plus a run manifest, since it avoids cross-process write contention
+  on the latency path.
+- Embedding at record time needs an embedder. Defer the choice until phase 3
+  actually needs vectors; leave the section optional in the format so the
+  writer does not block on it.

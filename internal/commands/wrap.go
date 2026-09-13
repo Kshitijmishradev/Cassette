@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Kshitijmishradev/cassette/internal/cli"
+	"github.com/Kshitijmishradev/cassette/internal/config"
 	"github.com/Kshitijmishradev/cassette/internal/env"
 	"github.com/Kshitijmishradev/cassette/internal/proxy"
 	"github.com/Kshitijmishradev/cassette/internal/record"
+	"github.com/Kshitijmishradev/cassette/internal/replay"
+	"github.com/Kshitijmishradev/cassette/internal/tape"
 )
 
 // debugVar turns on proxy diagnostics. Off by default, because those
@@ -98,15 +102,13 @@ func runWrap(ctx *cli.Context) error {
 		observer = rec
 
 	case env.ModeReplay:
-		return pending(3, "wrap in replay mode")
+		// Replay never reaches the proxy: there is no server to proxy to.
+		// The tape answers directly, and a live process is spawned only if
+		// a read-class call misses.
+		return runReplay(ctx, logfFor())
 	}
 
-	var logf func(string, ...any)
-	if os.Getenv(debugVar) != "" {
-		logf = func(format string, args ...any) {
-			fmt.Fprintf(os.Stderr, "cassette: "+format+"\n", args...)
-		}
-	}
+	logf := logfFor()
 
 	code, err := proxy.Run(ctx.Ctx, proxy.Options{
 		Command:  ctx.Child,
@@ -125,4 +127,98 @@ func runWrap(ctx *cli.Context) error {
 		return &cli.ExitCodeError{Code: code}
 	}
 	return nil
+}
+
+// logfFor returns a diagnostic logger, or nil when debugging is off.
+//
+// Diagnostics can only go to stderr, which the agent may be capturing and
+// showing to a user who did not ask to see our internals, so they are off by
+// default.
+func logfFor() func(string, ...any) {
+	if os.Getenv(debugVar) == "" {
+		return nil
+	}
+	return func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, "cassette: "+format+"\n", args...)
+	}
+}
+
+// runReplay serves this server's traffic from its tape.
+func runReplay(ctx *cli.Context, logf func(string, ...any)) error {
+	dir := os.Getenv(env.TapeVar)
+	if dir == "" {
+		return fmt.Errorf("%s=replay but %s is unset; run this through `cassette replay`", env.ModeVar, env.TapeVar)
+	}
+
+	name := ctx.Flags.Lookup("name").Value.String()
+	if name == "" {
+		name = record.TapeName(ctx.Child)
+	}
+
+	t, err := tape.Open(filepath.Join(dir, name+".cas"))
+	if err != nil {
+		return fmt.Errorf("opening tape for %s: %w", name, err)
+	}
+	defer t.Close()
+
+	if !t.Header().Complete() {
+		fmt.Fprintf(os.Stderr, "cassette: tape %s is incomplete; the recording was interrupted\n", name)
+	}
+
+	cfg, _, err := config.Load(".")
+	if err != nil {
+		return err
+	}
+	if p := os.Getenv(env.ConfigVar); p != "" {
+		if cfg, err = config.LoadFile(p); err != nil {
+			return err
+		}
+	}
+
+	// Fall-through needs the real server command, which is exactly the argv
+	// the agent handed us. Nil disables it entirely, which is what makes a
+	// hermetic replay provable rather than merely intended.
+	var liveCmd []string
+	if cfg.Replay.AllowFallThrough() {
+		liveCmd = ctx.Child
+	}
+
+	res, err := replay.Run(ctx.Ctx, replay.Options{
+		Tape:        t,
+		Stdin:       os.Stdin,
+		Stdout:      os.Stdout,
+		Classifier:  cfg.Classifier(),
+		LiveCommand: liveCmd,
+		LiveEnv:     replayEnv(),
+		LiveStderr:  os.Stderr,
+		Logf:        logf,
+	})
+	if err != nil {
+		return err
+	}
+
+	// The report goes beside the tape for the outer command to collect.
+	// Written even on a clean exit path only, since a crashed shim has
+	// nothing trustworthy to say.
+	if werr := replay.NewReport(name, res).Write(dir); werr != nil {
+		fmt.Fprintf(os.Stderr, "cassette: writing replay report: %v\n", werr)
+	}
+	return nil
+}
+
+// replayEnv strips cassette's own variables before spawning a live server.
+// Without this, a server that happens to be another cassette shim would try
+// to replay from the same tape, recursively.
+func replayEnv() []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		switch {
+		case strings.HasPrefix(kv, env.ModeVar+"="),
+			strings.HasPrefix(kv, env.TapeVar+"="),
+			strings.HasPrefix(kv, env.RunIDVar+"="):
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }

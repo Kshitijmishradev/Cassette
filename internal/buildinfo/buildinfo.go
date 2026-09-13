@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strings"
 )
 
 var (
@@ -72,7 +73,11 @@ func (i Info) Short() string {
 	if commit != "" {
 		s += "+" + commit
 	}
-	if i.Dirty {
+	// `git describe --dirty` already appends the marker, so only add it when
+	// the version string does not carry it. Otherwise a local build reports
+	// itself as "v0.2-dirty+abc123-dirty", which looks like a bug in the
+	// stamping rather than a working tree with uncommitted changes.
+	if i.Dirty && !strings.HasSuffix(i.Version, "-dirty") {
 		s += "-dirty"
 	}
 	return s

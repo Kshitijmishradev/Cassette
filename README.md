@@ -223,6 +223,54 @@ are.
 
 ---
 
+## Explore the run
+
+The React trace viewer is embedded in the binary. It reads the same
+file-shaped API whether it is browsing local cassettes or a static export:
+
+```sh
+cassette serve --suite ./cassettes --open
+cassette export --static ./cassette-site --suite ./cassettes
+```
+
+The four views are a sortable runs list, a tier-badged waterfall, an aligned
+trajectory diff, and a verdict grid. `unknown` means a run has never been
+replayed; it is never presented as a pass. The static export has no backend,
+POST requests, query parameters, or live credentials.
+
+The real-agent verification used Codex against a deliberately nonexistent MCP
+server during replay: 6 of 6 requests were served from tape at the exact tier,
+the trajectory was identical, and the agent returned `42`. See
+[the recorded result](./docs/REAL_AGENT_RUN.md).
+
+---
+
+## Pull-request behavior check
+
+Use the repository as a composite GitHub Action to replay a committed suite,
+fail according to Cassette's exit contract, and maintain one readable PR
+comment:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+
+steps:
+  - uses: actions/checkout@v4
+  - uses: Kshitijmishradev/Cassette@main
+    with:
+      suite: ./cassettes
+      fail-on: outcome
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Tagged releases build checksum-protected archives for macOS and Linux on
+Intel and ARM. GoReleaser also generates the Homebrew cask for the separate
+`Kshitijmishradev/homebrew-tap` repository.
+
+---
+
 ## Design notes
 
 - **No dependencies.** This binary sits on the wire where every credential and
@@ -243,9 +291,11 @@ Full reasoning in [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Status
 
-**7 of 9 phases complete.** Recording, replay, diffing, the parallel suite
-runner and ClickHouse export all work and are verified end to end. The web UI
-(`cassette serve`) and the public demo (`export --static`) are not built yet.
+**8 of 9 phases complete.** Recording, replay, diffing, the parallel suite
+runner, ClickHouse export, embedded web UI, static export, release packaging,
+and PR behavior reporter all work and are verified end to end. Phase 8's code
+is complete; publishing the prepared Cloudflare Pages site and Homebrew tap
+is waiting only on those accounts' repository secrets.
 
 See [PROGRESS.md](./PROGRESS.md) for the detail, including known limitations
 and the bugs worth keeping.
@@ -273,6 +323,7 @@ Requires Go 1.27. Nothing else.
 | [GOALS.md](./GOALS.md) | What it is for, what success means, explicit non-goals |
 | [PROGRESS.md](./PROGRESS.md) | What is built, what is left, known limitations |
 | [CASSETTE_PLAN.md](./CASSETTE_PLAN.md) | The working plan and session context |
+| [docs/REAL_AGENT_RUN.md](./docs/REAL_AGENT_RUN.md) | Real Codex record/replay verification |
 
 ---
 

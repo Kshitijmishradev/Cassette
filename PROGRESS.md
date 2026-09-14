@@ -2,7 +2,7 @@
 
 What is built, what is left, and what went wrong on the way.
 
-Last updated: 2026-09-14 · 65 commits · tags through `v0.7-analytics`
+Last updated: 2026-09-14 · 88 commits · tags through `v0.8-web`
 
 For how it works see [ARCHITECTURE.md](./ARCHITECTURE.md). For what it is for
 see [GOALS.md](./GOALS.md). The working plan with full session context is
@@ -12,7 +12,7 @@ see [GOALS.md](./GOALS.md). The working plan with full session context is
 
 ## Status at a glance
 
-**7 of 9 phases complete.**
+**8 of 9 phases complete. Phase 8 implementation is complete; external publication is pending.**
 
 | phase | | tag | verified by |
 |---|---|---|---|
@@ -23,17 +23,17 @@ see [GOALS.md](./GOALS.md). The working plan with full session context is
 | 4 | Trajectory diff | `v0.5-diff` | unchanged run reports identical; changed run renders |
 | 5 | Suite and parallelism | `v0.6-suite` | 12 cassettes, 3 altered, correctly detected |
 | 6 | ClickHouse analytics | `v0.7-analytics` | every query run against ClickHouse 26.8.3 |
-| 7 | Web UI | — | **not started** |
-| 8 | Distribution and demo | — | **not started** |
+| 7 | Web UI | `v0.8-web` | four screens against live and static data |
+| 8 | Distribution and demo | — | code verified; Cloudflare/tap secrets pending |
 
 ```
-6,835 lines of Go    3,983 lines of tests    130 tests    11 benchmarks
+7,816 lines of Go    4,170 lines of tests    137 tests    11 benchmarks
 0 dependencies (enforced by CI)
 ```
 
-Working commands: `wrap`, `record`, `inspect`, `replay`, `test`,
-`export --clickhouse`, `version`.
-Still stubbed: `serve` (phase 7), `export --static` (phase 8).
+Working commands: `wrap`, `record`, `inspect`, `replay`, `test`, `serve`,
+`export --clickhouse`, `export --static`, `export --fixtures`, `version`.
+There are no remaining command stubs.
 
 ---
 
@@ -113,10 +113,10 @@ matches the raw scan exactly.
 
 ## What is left
 
-### Phase 7 — Web UI
+### Phase 7 — Web UI — complete
 
-`cassette serve` on localhost, React built with Vite and embedded via
-`go:embed` so the binary stays one file with no node runtime.
+`cassette serve` runs on loopback, with React built by Vite and embedded via
+`go:embed` so the binary stays one file with no Node runtime.
 
 Four screens:
 
@@ -134,20 +134,36 @@ gives the merged trajectory, `replay.Report` gives per-call tiers,
 `diff.Compare` gives the alignment and verdict. This is a presentation layer
 over APIs that already work.
 
-**Exit criterion:** all four screens work against real local data and the diff
-screen is good enough to be the README gif.
+All four screens work against both real local data and backend-free exports.
+The runs list is sortable, waterfall calls expose their match tier, trajectory
+diffs collapse identical regions and distinguish verdict-deciding writes, and
+the suite grid links each cell to its diff.
 
-### Phase 8 — Distribution and demo
+**Verified:** production build, embedded asset test, live API handler tests,
+static export test, missing-diff 404, dark/light browser inspection, and a
+real Codex recording rendered in the waterfall and diff views.
 
-- `cassette export --static` precomputing every view as JSON next to the SPA
-- Cloudflare Pages deploy, so a recruiter clicks a link and explores real runs
-  backed by nothing that can break or bill
-- goreleaser for darwin and linux, plus a homebrew tap
-- A GitHub Action with a PR comment reporter
-- The final README with the demo gif and the public URL
+### Phase 8 — Distribution and demo — activation pending
 
-**Exit criterion:** a public URL shows real recorded runs, and the Action fails
-a PR that changes agent behavior.
+- `cassette export --static` precomputes every view as JSON next to the SPA
+- a Cloudflare Pages workflow assembles the offline demo, preserves it as a
+  workflow artifact, and deploys when account secrets are configured
+- GoReleaser builds Darwin/Linux for ARM64/AMD64, writes SHA-256 checksums,
+  and generates a Homebrew cask for `Kshitijmishradev/homebrew-tap`
+- the composite GitHub Action preserves exit codes 0/1/2, writes the job
+  summary, and creates or updates one PR comment
+- a portable committed cassette exercises that Action without Node, network,
+  or the original MCP server
+- a real Codex agent run now reports 6/6 exact, no fall-through, no refusals,
+  and an identical trajectory; see `docs/REAL_AGENT_RUN.md`
+
+GoReleaser 2.18.1 validated the configuration and produced all four snapshot
+archives plus the cask. `actionlint` 1.7.12 accepts every workflow.
+
+**External activation still required:** create/configure the Cloudflare Pages
+project and its two GitHub secrets, create the separate Homebrew tap and its
+write-token secret, then publish the public URL. Those are account changes,
+not unfinished repository code.
 
 ---
 
@@ -155,6 +171,13 @@ a PR that changes agent behavior.
 
 Every one of these was found by running something, not by reading code. They
 are listed because the failure modes are more instructive than the fixes.
+
+**A correct real-agent replay vanished during normal MCP shutdown.** The shim
+wrote its report only after stdin reached EOF, but Codex terminates MCP
+children as soon as the task is done. Every response had come from tape and
+the agent had finished, yet the parent saw `no shim reported in`. Reports are
+now atomically checkpointed after each message, so abrupt client teardown
+cannot erase the observed trajectory or leave truncated JSON behind.
 
 **Shutdown escalation was gated on the drain it was meant to rescue.** Reaping
 the child waited for both pumps to finish. That deadlocks against exactly the

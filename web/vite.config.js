@@ -5,4 +5,7 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   publicDir: 'fixtures',
+  build: {
+    copyPublicDir: false,
+  },
 })

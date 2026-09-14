@@ -34,7 +34,14 @@ function useJson(path) {
           error.status = response.status
           throw error
         }
-        return response.json()
+        const body = await response.text()
+        try {
+          return JSON.parse(body)
+        } catch (cause) {
+          const error = new Error(body.trimStart().startsWith('<') ? 'Resource not found' : 'Response was not valid JSON', { cause })
+          if (body.trimStart().startsWith('<')) error.status = 404
+          throw error
+        }
       })
       .then((data) => setState({ data, error: null, loading: false }))
       .catch((error) => {
@@ -385,7 +392,7 @@ function groupDiffPairs(pairs) {
 }
 
 function DiffPage({ name, summary }) {
-  const diffState = useJson(`/api/runs/${encodeURIComponent(name)}/diff.json`)
+  const diffState = useJson(summary?.verdict === 'unknown' ? null : `/api/runs/${encodeURIComponent(name)}/diff.json`)
   const [expanded, setExpanded] = useState({})
 
   useEffect(() => setExpanded({}), [name])
@@ -557,11 +564,6 @@ function shortAgent(value) {
 export default function App() {
   const { route, parts } = useHashRoute()
   const suite = useJson('/api/suite.json')
-
-  useEffect(() => {
-    const saved = localStorage.getItem('cassette-theme')
-    document.documentElement.dataset.theme = saved || 'dark'
-  }, [])
 
   if (suite.loading) return <Loading label="Loading cassette index" />
   if (suite.error) return <ErrorState title="Could not load the cassette index" error={suite.error} />

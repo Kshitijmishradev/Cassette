@@ -1,0 +1,31 @@
+{
+  "name": "case-01",
+  "runId": "20260914T212743.055-88986",
+  "createdAt": "2026-09-14T17:27:43.055809-04:00",
+  "agent": [
+    "python3",
+    "scripts/mcp_drive.py",
+    "/dev/null",
+    "cassette",
+    "wrap",
+    "--name",
+    "server-40a45c",
+    "--",
+    "/not-used-during-hermetic-replay"
+  ],
+  "cassette": "v0.7-analytics-18-g212b48b+212b48bea9f6",
+  "agentExitCode": 1,
+  "tapes": [
+    {
+      "file": "server-40a45c.cas",
+      "entries": 7,
+      "bytes": 11353,
+      "toolCalls": 3,
+      "errors": 0,
+      "truncated": 0,
+      "firstNanos": 1789421263141262000,
+      "lastNanos": 1789421263294277291,
+      "complete": true
+    }
+  ]
+}

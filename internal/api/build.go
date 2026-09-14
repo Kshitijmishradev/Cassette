@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -12,6 +13,9 @@ import (
 	"github.com/Kshitijmishradev/cassette/internal/suite"
 	"github.com/Kshitijmishradev/cassette/internal/tape"
 )
+
+// ErrDiffUnavailable means a run has no replay report to compare yet.
+var ErrDiffUnavailable = errors.New("trajectory diff is unavailable until the run has been replayed")
 
 // Builder turns on-disk suites into wire types.
 //
@@ -244,7 +248,7 @@ func (b *Builder) BuildDiff(name string) (*Diff, error) {
 		return nil, err
 	}
 	if len(reports) == 0 {
-		return nil, fmt.Errorf("%s has never been replayed", name)
+		return nil, fmt.Errorf("%s: %w", name, ErrDiffUnavailable)
 	}
 
 	// One diff per run. With several servers the first tape is the one shown;

@@ -9,6 +9,7 @@ import (
 	"github.com/Kshitijmishradev/cassette/internal/chexport"
 	"github.com/Kshitijmishradev/cassette/internal/cli"
 	"github.com/Kshitijmishradev/cassette/internal/config"
+	webui "github.com/Kshitijmishradev/cassette/web"
 )
 
 func exportCmd() *cli.Command {
@@ -33,7 +34,9 @@ repeated name columns, payloads kept out of the scanned table, and a rollup
 that stores quantile states rather than finished numbers so any time range
 can be answered by merging them.
 
---static writes the web UI with precomputed data (phase 8).`,
+--static writes a self-contained web UI with precomputed data. The result can
+be opened through any static file server or deployed directly to Cloudflare
+Pages; it has no backend and performs no network writes.`,
 		Flags: func(fs *flag.FlagSet) {
 			fs.String("clickhouse", "", "write ClickHouse-loadable data to this directory")
 			fs.String("static", "", "write a self-contained static site to this directory")
@@ -81,7 +84,20 @@ func runExport(ctx *cli.Context) error {
 	}
 
 	if static != "" {
-		return pending(8, "export --static")
+		assets, err := webui.WriteAssets(static)
+		if err != nil {
+			return err
+		}
+		jsonFiles, err := api.Dump(&api.Builder{
+			SuiteDir:   ctx.Flags.Lookup("suite").Value.String(),
+			Classifier: cfg.Classifier(),
+		}, static)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(ctx.Out, "exported static site to %s: %d assets, %d JSON files\n",
+			filepath.Clean(static), assets, jsonFiles)
+		return nil
 	}
 
 	st, err := chexport.Export(chexport.Options{

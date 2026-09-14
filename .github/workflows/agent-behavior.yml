@@ -1,0 +1,21 @@
+name: agent behavior
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replay the portable demonstration cassette
+        uses: ./
+        with:
+          suite: demo/cassettes
+          fail-on: outcome
+          github-token: ${{ secrets.GITHUB_TOKEN }}

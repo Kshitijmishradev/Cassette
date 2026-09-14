@@ -16,7 +16,8 @@ coverage.*
 
 # node (web UI, phase 7)
 node_modules/
-web/dist/
+# The production bundle is checked in because go:embed needs it in a clean
+# Go-only checkout. npm still owns and regenerates these files.
 
 # os
 .DS_Store

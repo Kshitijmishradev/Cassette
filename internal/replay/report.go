@@ -2,6 +2,7 @@ package replay
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,7 +61,32 @@ func (r Report) Write(dir string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, r.Tape+ReportSuffix), append(b, '\n'), 0o644)
+
+	// Reports are checkpointed while replay is running. Write through a
+	// temporary file so a process killed mid-write leaves either the previous
+	// complete checkpoint or the new one, never truncated JSON.
+	tmp, err := os.CreateTemp(dir, ".replay-report-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(append(b, '\n')); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, filepath.Join(dir, r.Tape+ReportSuffix)); err != nil {
+		return fmt.Errorf("publishing replay report: %w", err)
+	}
+	return nil
 }
 
 // CollectReports gathers every shim's report from a replay directory.

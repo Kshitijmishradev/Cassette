@@ -1,0 +1,57 @@
+version: 2
+project_name: cassette
+
+builds:
+  - id: cassette
+    main: ./cmd/cassette
+    binary: cassette
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/Kshitijmishradev/cassette/internal/buildinfo.Version={{ .Version }}
+        -X github.com/Kshitijmishradev/cassette/internal/buildinfo.Commit={{ .Commit }}
+
+archives:
+  - ids:
+      - cassette
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+homebrew_casks:
+  - name: cassette
+    binaries:
+      - cassette
+    directory: Casks
+    homepage: https://github.com/Kshitijmishradev/Cassette
+    description: Record and replay MCP tool calls to test agent behavior
+    license: MIT
+    repository:
+      owner: Kshitijmishradev
+      name: homebrew-tap
+      branch: main
+      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'

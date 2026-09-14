@@ -297,9 +297,10 @@ sees the history before they see the code, and one giant "initial commit" of
 Rough target: 60 to 100 commits across the eight phases, spread over real
 working sessions. That history is itself evidence of how the thing was built.
 
-## 9. Interview talking points this project generates
+## 9. Design decisions worth being able to defend
 
-Keep these current, they are half the reason to build it.
+The non-obvious calls, kept in one place so they can be argued with rather
+than rediscovered.
 
 - Why the replay hot path is a local mmap file and the analytics layer is
   ClickHouse. Opposite access patterns, one sentence each.

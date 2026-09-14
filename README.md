@@ -2,6 +2,10 @@
 
 **Record and replay MCP tool calls, so a change to your agent can be measured instead of guessed at.**
 
+[![ci](https://github.com/Kshitijmishradev/Cassette/actions/workflows/ci.yml/badge.svg)](https://github.com/Kshitijmishradev/Cassette/actions/workflows/ci.yml)
+[![go](https://img.shields.io/badge/go-1.27-00ADD8)](https://go.dev)
+[![deps](https://img.shields.io/badge/dependencies-0-brightgreen)](./go.mod)
+
 ```
 $ cassette test --suite ./cassettes
 

@@ -2,7 +2,7 @@
 
 What is built, what is left, and what went wrong on the way.
 
-Last updated: 2026-09-14 · 88 commits · tags through `v0.8-web`
+Last updated: 2026-09-14 · tags through `v0.8-web`
 
 For how it works see [ARCHITECTURE.md](./ARCHITECTURE.md). For what it is for
 see [GOALS.md](./GOALS.md). The working plan with full session context is

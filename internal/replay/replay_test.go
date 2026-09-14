@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Kshitijmishradev/cassette/internal/match"
 	"github.com/Kshitijmishradev/cassette/internal/safety"
@@ -113,6 +115,50 @@ func TestServesRecordedResponseWithLiveID(t *testing.T) {
 	}
 	if res.Served != 1 || res.ByTier[match.TierExact] != 1 {
 		t.Errorf("result = %+v", res)
+	}
+}
+
+// MCP clients are allowed to keep the server's stdin open until they tear
+// the child process down. A report checkpoint must therefore be available
+// before Run sees EOF, or real agent runs lose all of their results.
+func TestProgressIsReportedBeforeStdinCloses(t *testing.T) {
+	rd := buildTape(t, []rec{{
+		method: "tools/call", tool: "read", args: `{"path":"/x"}`,
+		request:  `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"read","arguments":{"path":"/x"}}}`,
+		response: `{"jsonrpc":"2.0","id":7,"result":{"content":"hello"}}`,
+	}})
+
+	inR, inW := io.Pipe()
+	defer inW.Close()
+	var out bytes.Buffer
+	progress := make(chan Result, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := Run(context.Background(), Options{
+			Tape: rd, Stdin: inR, Stdout: &out,
+			Progress: func(r Result) { progress <- r },
+		})
+		done <- err
+	}()
+
+	if _, err := io.WriteString(inW, `{"jsonrpc":"2.0","id":991,"method":"tools/call","params":{"name":"read","arguments":{"path":"/x"}}}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-progress:
+		if got.Served != 1 || len(got.Calls) != 1 {
+			t.Fatalf("checkpoint = %+v, want the served call", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no checkpoint arrived while stdin remained open")
+	}
+
+	if err := inW.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -183,6 +183,17 @@ func runReplay(ctx *cli.Context, logf func(string, ...any)) error {
 		liveCmd = ctx.Child
 	}
 
+	writeReport := func(res replay.Result) {
+		if werr := replay.NewReport(name, res).Write(dir); werr != nil && logf != nil {
+			logf("writing replay report: %v", werr)
+		}
+	}
+
+	// Publish an initial report before reading stdin, then checkpoint after
+	// every message. Some MCP clients terminate their server children as soon
+	// as the task ends instead of closing stdin; waiting for a clean EOF would
+	// lose the whole trajectory in that common lifecycle.
+	writeReport(replay.Result{})
 	res, err := replay.Run(ctx.Ctx, replay.Options{
 		Tape:        t,
 		Stdin:       os.Stdin,
@@ -192,16 +203,11 @@ func runReplay(ctx *cli.Context, logf func(string, ...any)) error {
 		LiveEnv:     replayEnv(),
 		LiveStderr:  os.Stderr,
 		Logf:        logf,
+		Progress:    writeReport,
 	})
+	writeReport(res)
 	if err != nil {
 		return err
-	}
-
-	// The report goes beside the tape for the outer command to collect.
-	// Written even on a clean exit path only, since a crashed shim has
-	// nothing trustworthy to say.
-	if werr := replay.NewReport(name, res).Write(dir); werr != nil {
-		fmt.Fprintf(os.Stderr, "cassette: writing replay report: %v\n", werr)
 	}
 	return nil
 }

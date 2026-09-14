@@ -45,6 +45,11 @@ type Options struct {
 	LiveStderr  io.Writer
 
 	Logf func(format string, args ...any)
+
+	// Progress receives a current result snapshot after each input message.
+	// A real MCP client may terminate its server process without closing stdin,
+	// so callers that need a durable report cannot wait for Run to return.
+	Progress func(Result)
 }
 
 func (o *Options) logf(format string, args ...any) {
@@ -155,9 +160,19 @@ func (e *engine) serve(ctx context.Context) error {
 		}
 
 		if err := e.handle(msg, env); err != nil {
+			e.checkpoint()
 			return err
 		}
+		e.checkpoint()
 	}
+}
+
+func (e *engine) checkpoint() {
+	if e.opts.Progress == nil {
+		return
+	}
+	e.result.Unused = e.matcher.Unused()
+	e.opts.Progress(e.result)
 }
 
 func (e *engine) handle(msg []byte, env jsonrpc.Envelope) error {

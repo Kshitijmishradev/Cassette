@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Kshitijmishradev/cassette/internal/api"
 	"github.com/Kshitijmishradev/cassette/internal/chexport"
 	"github.com/Kshitijmishradev/cassette/internal/cli"
 	"github.com/Kshitijmishradev/cassette/internal/config"
@@ -36,6 +37,7 @@ can be answered by merging them.
 		Flags: func(fs *flag.FlagSet) {
 			fs.String("clickhouse", "", "write ClickHouse-loadable data to this directory")
 			fs.String("static", "", "write a self-contained static site to this directory")
+			fs.String("fixtures", "", "write only the API JSON, for frontend development")
 			fs.String("suite", "./cassettes", "directory of recorded runs")
 			fs.Bool("no-payloads", false, "omit request and response bodies")
 		},
@@ -46,19 +48,40 @@ can be answered by merging them.
 func runExport(ctx *cli.Context) error {
 	ch := ctx.Flags.Lookup("clickhouse").Value.String()
 	static := ctx.Flags.Lookup("static").Value.String()
+	fixtures := ctx.Flags.Lookup("fixtures").Value.String()
 
+	chosen := 0
+	for _, v := range []string{ch, static, fixtures} {
+		if v != "" {
+			chosen++
+		}
+	}
 	switch {
-	case ch == "" && static == "":
-		return cli.Usagef("choose a destination: --clickhouse <dir> or --static <dir>")
-	case ch != "" && static != "":
-		return cli.Usagef("--clickhouse and --static are separate exports; run one at a time")
-	case static != "":
-		return pending(8, "export --static")
+	case chosen == 0:
+		return cli.Usagef("choose a destination: --clickhouse, --static or --fixtures")
+	case chosen > 1:
+		return cli.Usagef("these are separate exports; run one at a time")
 	}
 
 	cfg, _, err := config.Load(".")
 	if err != nil {
 		return err
+	}
+
+	if fixtures != "" {
+		n, err := api.Dump(&api.Builder{
+			SuiteDir:   ctx.Flags.Lookup("suite").Value.String(),
+			Classifier: cfg.Classifier(),
+		}, fixtures)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(ctx.Out, "wrote %d JSON files to %s\n", n, filepath.Clean(fixtures))
+		return nil
+	}
+
+	if static != "" {
+		return pending(8, "export --static")
 	}
 
 	st, err := chexport.Export(chexport.Options{

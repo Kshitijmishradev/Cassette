@@ -1,0 +1,7 @@
+{
+  "index": 4,
+  "method": "tools/call",
+  "tool": "add",
+  "request": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":2,\"b\":40}}}\n",
+  "response": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"MCP error -32602: Tool add not found\"}],\"isError\":true},\"jsonrpc\":\"2.0\",\"id\":4}\n"
+}

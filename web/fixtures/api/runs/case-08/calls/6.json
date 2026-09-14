@@ -1,0 +1,7 @@
+{
+  "index": 6,
+  "method": "tools/call",
+  "tool": "printEnv",
+  "request": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"printEnv\",\"arguments\":{}}}\n",
+  "response": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"MCP error -32602: Tool printEnv not found\"}],\"isError\":true},\"jsonrpc\":\"2.0\",\"id\":6}\n"
+}

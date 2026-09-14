@@ -1,0 +1,95 @@
+{
+  "name": "case-09",
+  "verdict": "identical",
+  "baselineName": "recorded",
+  "candidateName": "this run",
+  "baselineSteps": 5,
+  "candidateSteps": 5,
+  "stepDelta": 0,
+  "matched": 5,
+  "substituted": 0,
+  "inserted": 0,
+  "deleted": 0,
+  "missed": 0,
+  "pairs": [
+    {
+      "op": "match",
+      "write": false,
+      "baseline": {
+        "method": "initialize",
+        "args": "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"cassette-verify\",\"version\":\"0\"}}",
+        "class": "read"
+      },
+      "candidate": {
+        "method": "initialize",
+        "args": "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"cassette-verify\",\"version\":\"0\"}}",
+        "class": "read",
+        "tier": "exact"
+      }
+    },
+    {
+      "op": "match",
+      "write": false,
+      "baseline": {
+        "method": "tools/list",
+        "class": "read"
+      },
+      "candidate": {
+        "method": "tools/list",
+        "class": "read",
+        "tier": "exact"
+      }
+    },
+    {
+      "op": "match",
+      "write": true,
+      "baseline": {
+        "method": "tools/call",
+        "tool": "echo",
+        "args": "{\"message\":\"hello from cassette\"}",
+        "class": "write"
+      },
+      "candidate": {
+        "method": "tools/call",
+        "tool": "echo",
+        "args": "{\"message\":\"hello from cassette\"}",
+        "class": "write",
+        "tier": "exact"
+      }
+    },
+    {
+      "op": "match",
+      "write": true,
+      "baseline": {
+        "method": "tools/call",
+        "tool": "add",
+        "args": "{\"a\":2,\"b\":40}",
+        "class": "write"
+      },
+      "candidate": {
+        "method": "tools/call",
+        "tool": "add",
+        "args": "{\"a\":2,\"b\":40}",
+        "class": "write",
+        "tier": "exact"
+      }
+    },
+    {
+      "op": "match",
+      "write": true,
+      "baseline": {
+        "method": "tools/call",
+        "tool": "echo",
+        "args": "{\"message\":\"second echo\"}",
+        "class": "write"
+      },
+      "candidate": {
+        "method": "tools/call",
+        "tool": "echo",
+        "args": "{\"message\":\"second echo\"}",
+        "class": "write",
+        "tier": "exact"
+      }
+    }
+  ]
+}

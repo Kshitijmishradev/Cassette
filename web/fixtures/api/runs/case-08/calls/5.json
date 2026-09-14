@@ -1,0 +1,7 @@
+{
+  "index": 5,
+  "method": "tools/call",
+  "tool": "echo",
+  "request": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"message\":\"second echo\"}}}\n",
+  "response": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Echo: second echo\"}]},\"jsonrpc\":\"2.0\",\"id\":5}\n"
+}

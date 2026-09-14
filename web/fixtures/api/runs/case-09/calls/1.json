@@ -1,0 +1,5 @@
+{
+  "index": 1,
+  "method": "notifications/initialized",
+  "request": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n"
+}

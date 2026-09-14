@@ -1,0 +1,7 @@
+{
+  "index": 3,
+  "method": "tools/call",
+  "tool": "echo",
+  "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"message\":\"hello from cassette\"}}}\n",
+  "response": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Echo: hello from cassette\"}]},\"jsonrpc\":\"2.0\",\"id\":3}\n"
+}

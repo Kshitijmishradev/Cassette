@@ -1,10 +1,25 @@
 # Cassette: implementation plan and session context
 
-> **Purpose of this file.** This is the resume document. If a session ends,
-> hits a limit, or a fresh Claude picks this up cold, read this file top to
-> bottom first. It contains the product premise, every locked decision, the
-> file format spec, the phase plan, and a live status section. Update the
-> STATUS section at the end of every working session.
+> **Purpose of this file.** This is the working document: session context,
+> locked decisions, the build environment, and the live STATUS section. If a
+> session ends or a fresh Claude picks this up cold, read this first, then
+> update STATUS before finishing.
+>
+> It is not the reader-facing documentation. Those are separate and should
+> stay that way, because this file carries working notes that would be noise
+> to someone evaluating the project:
+>
+> | file | owns |
+> |---|---|
+> | [README.md](./README.md) | The pitch, quick start, headline numbers |
+> | [ARCHITECTURE.md](./ARCHITECTURE.md) | How it works and why it is shaped this way |
+> | [GOALS.md](./GOALS.md) | What it is for, what success means, non-goals |
+> | [PROGRESS.md](./PROGRESS.md) | Phase status, what is left, known limitations |
+> | CASSETTE_PLAN.md | This file: working notes, build environment, session resume |
+>
+> When a phase completes, update STATUS here **and** the phase table in
+> PROGRESS.md. Two places is the cost of separating working notes from
+> reader-facing docs, and it is worth paying.
 
 Last updated: 2026-09-13
 Owner: Kshitij (github.com/Kshitijmishradev)

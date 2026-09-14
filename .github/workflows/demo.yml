@@ -1,0 +1,45 @@
+name: static demo
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - ".github/workflows/demo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the backend-free demo
+        run: |
+          site="${RUNNER_TEMP}/cassette-public-demo"
+          mkdir -p "$site/api"
+          cp -R web/dist/. "$site/"
+          cp -R web/fixtures/api/. "$site/api/"
+
+      - name: Preserve the static site as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cassette-public-demo
+          path: ${{ runner.temp }}/cassette-public-demo
+
+      - name: Deploy to Cloudflare Pages
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ${{ runner.temp }}/cassette-public-demo --project-name=cassette-agent-replay
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

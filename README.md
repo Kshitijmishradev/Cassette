@@ -294,8 +294,9 @@ Full reasoning in [ARCHITECTURE.md](./ARCHITECTURE.md).
 **8 of 9 phases complete.** Recording, replay, diffing, the parallel suite
 runner, ClickHouse export, embedded web UI, static export, release packaging,
 and PR behavior reporter all work and are verified end to end. Phase 8's code
-is complete; publishing the prepared Cloudflare Pages site and Homebrew tap
-is waiting only on those accounts' repository secrets.
+is complete; publishing the prepared Cloudflare Pages site and Homebrew tap,
+then capturing the final README demo from that public URL, is waiting on those
+accounts' repository secrets.
 
 See [PROGRESS.md](./PROGRESS.md) for the detail, including known limitations
 and the bugs worth keeping.

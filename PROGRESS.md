@@ -12,7 +12,7 @@ see [GOALS.md](./GOALS.md). The working plan with full session context is
 
 ## Status at a glance
 
-**8 of 9 phases complete. Phase 8 implementation is complete; external publication is pending.**
+**8 of 9 phases complete. Phase 8 implementation is complete; external publication and its README capture are pending.**
 
 | phase | | tag | verified by |
 |---|---|---|---|
@@ -162,8 +162,9 @@ archives plus the cask. `actionlint` 1.7.12 accepts every workflow.
 
 **External activation still required:** create/configure the Cloudflare Pages
 project and its two GitHub secrets, create the separate Homebrew tap and its
-write-token secret, then publish the public URL. Those are account changes,
-not unfinished repository code.
+write-token secret, publish the public URL, then capture that deployed diff
+screen for the final README gif. Those are activation work, not unfinished
+application code.
 
 ---
 

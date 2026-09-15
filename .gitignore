@@ -21,3 +21,5 @@ node_modules/
 
 # os
 .DS_Store
+
+/web/site-dist/

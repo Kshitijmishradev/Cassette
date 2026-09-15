@@ -24,6 +24,10 @@ builds:
 archives:
   - ids:
       - cassette
+    files:
+      - LICENSE
+      - QUICKSTART.md
+      - SECURITY.md
     formats:
       - tar.gz
     name_template: >-
@@ -46,6 +50,7 @@ homebrew_casks:
   - name: cassette
     binaries:
       - cassette
+    skip_upload: '{{ if (index .Env "HOMEBREW_TAP_GITHUB_TOKEN") }}auto{{ else }}true{{ end }}'
     directory: Casks
     homepage: https://github.com/Kshitijmishradev/Cassette
     description: Record and replay MCP tool calls to test agent behavior
@@ -54,4 +59,4 @@ homebrew_casks:
       owner: Kshitijmishradev
       name: homebrew-tap
       branch: main
-      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
+      token: '{{ (index .Env "HOMEBREW_TAP_GITHUB_TOKEN") }}'

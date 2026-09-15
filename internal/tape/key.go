@@ -1,7 +1,9 @@
 package tape
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 )
 
@@ -12,10 +14,8 @@ import (
 // specified, and in the standard library, which matters given the
 // zero-dependency constraint.
 //
-// Collision resistance is not a security property here. A collision means
-// replay serves the wrong recorded response, which a trajectory diff would
-// immediately show as divergent behavior. 64 bits of FNV over a few thousand
-// distinct calls per run is far past sufficient.
+// Hashes are lookup accelerators, not proof of equality. The replay matcher
+// also checks method, tool, and argument bytes before serving a response.
 
 // HashKey is the exact-match key: the method plus the arguments byte for
 // byte as they arrived. Two calls hash the same only if the agent sent
@@ -31,12 +31,9 @@ func HashKey(method string, args []byte) uint64 {
 // HashNorm is the normalized-match key: the method plus arguments with key
 // order and whitespace removed.
 //
-// This is deliberately lossy, and the loss is the point. An agent that
-// serializes the same logical arguments with keys in a different order on a
-// second run is making the same call, and exact matching would miss it. What
-// is given up is that JSON numbers round-trip through float64, so 1e10 and
-// 10000000000 normalize together. For matching a recorded tool call that is
-// correct behavior, not a bug.
+// Object keys and whitespace normalize together. Numeric spellings are kept
+// exact: converting through float64 would collapse distinct large identifiers
+// and amounts above 2^53 into the same call.
 //
 // Falls back to the exact hash when the arguments are not valid JSON, which
 // keeps a malformed call matchable rather than unmatchable.
@@ -58,7 +55,12 @@ func Canonicalize(args []byte) ([]byte, error) {
 		return nil, nil
 	}
 	var v any
-	if err := json.Unmarshal(args, &v); err != nil {
+	if !json.Valid(args) {
+		return nil, fmt.Errorf("invalid JSON arguments")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(args))
+	decoder.UseNumber()
+	if err := decoder.Decode(&v); err != nil {
 		return nil, err
 	}
 	return json.Marshal(v)

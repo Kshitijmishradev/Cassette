@@ -66,6 +66,9 @@ func runExport(ctx *cli.Context) error {
 		return cli.Usagef("these are separate exports; run one at a time")
 	}
 
+	if ch == "" && ctx.Flags.Lookup("no-payloads").Value.String() == "true" {
+		return cli.Usagef("--no-payloads is only supported with --clickhouse; static and fixture exports contain full payloads")
+	}
 	cfg, _, err := config.Load(".")
 	if err != nil {
 		return err

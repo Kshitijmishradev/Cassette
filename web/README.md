@@ -1,4 +1,4 @@
-# Cassette web UI
+# Cassette website and web UI
 
 `cassette serve` starts a local UI for exploring recorded runs and reading
 trajectory diffs. This directory is the frontend. It is built with Vite and
@@ -10,20 +10,48 @@ parts of the data that are easy to render wrongly.
 
 ---
 
+## Public website
+
+The root route is a tape-inspired project introduction with three story chapters:
+record, replay, and understand. `#/docs` contains the searchable field guide.
+Existing `#/runs`, `#/runs/<name>/diff`, waterfall, and `#/grid` links still open
+the trace viewer. `cassette serve --open` opens `#/runs` directly.
+
+- `src/Story.jsx` — story chapters, CSS cassette artwork, interactive verdict example.
+- `src/Docs.jsx` — documentation chapters, search, and copyable commands.
+- `src/story.css` — website styles, responsive layouts, and reduced-motion support.
+- `src/Root.jsx` — website/viewer hash routing.
+
+The illustrative refund experiment is separate from the real fixture demo.
+No extra runtime dependencies or external art/font requests are required.
+
+### Cloudflare Pages
+
+The `.github/workflows/demo.yml` builds `web/site-dist` with `npm run build:site`
+and adds the reviewed fixture API to the deployment artifact. The Go binary
+embeds only the viewer in `web/dist`, with no fixture API or storytelling pages.
+After viewer edits, run `npm run build --prefix web` and commit the regenerated bundle. A push to
+`main` (or a manual workflow run) deploys to `cassette-agent-replay` when the
+Cloudflare secrets are configured. Local edits alone do not publish the site.
+
 ## Setup
 
 ```sh
 cd web
 npm install
 npm run dev        # dev server, serving ../web/fixtures as the API
-npm run build      # -> web/dist, which the Go binary embeds
+npm run build      # viewer -> web/dist, which the Go binary embeds
+npm run build:site # website -> web/site-dist, for Cloudflare
+npm run dev:viewer # viewer-only development
 ```
 
-Fixtures are real data from a real suite, committed to the repo. Nothing needs
-to be running. Regenerate with:
+Fixtures are real data from a reviewed demonstration suite, committed to the repo.
+Export into a fresh directory, review the data, then replace the fixtures you
+intend to publish. Exports refuse nonempty API destinations to avoid stale data.
+Nothing needs to be running. Generate a fresh export with:
 
 ```sh
-cassette export --fixtures web/fixtures --suite ./cassettes
+cassette export --fixtures /tmp/cassette-fixtures-new --suite ./cassettes
 ```
 
 ---

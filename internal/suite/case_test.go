@@ -120,3 +120,33 @@ func TestRunCaseWithoutAnAgentCommandIsAnError(t *testing.T) {
 		t.Error("a case with no agent command reported success")
 	}
 }
+
+func TestHermeticEnvironmentHelper(t *testing.T) {
+	if os.Getenv("CASSETTE_SECURITY_HELPER") != "1" {
+		return
+	}
+	if err := os.WriteFile(os.Getenv("CASSETTE_SECURITY_SENTINEL"), []byte(os.Getenv("CASSETTE_HERMETIC")), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHermeticModeDoesNotDependOnWritableConfig(t *testing.T) {
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "observed")
+	if err := os.Mkdir(filepath.Join(dir, ".hermetic.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CASSETTE_SECURITY_HELPER", "1")
+	t.Setenv("CASSETTE_SECURITY_SENTINEL", sentinel)
+	c := Case{Name: "example", Dir: dir}
+	// No replay reports are expected from the helper. The security assertion
+	// is the flag inherited by the actual child when config writes cannot work.
+	RunCase(t.Context(), c, Options{Hermetic: true, Agent: []string{os.Args[0], "-test.run=^TestHermeticEnvironmentHelper$"}})
+	got, err := os.ReadFile(sentinel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "1" {
+		t.Fatalf("hermetic flag was not inherited: %q", got)
+	}
+}

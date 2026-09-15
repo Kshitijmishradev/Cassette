@@ -65,8 +65,7 @@ var protocolMethods = map[string]bool{
 // not been classified explicitly.
 //
 // A heuristic is uncomfortable here, and it is deliberately one-directional:
-// it can only be used to prove a tool is safe, never to prove one is
-// dangerous. Anything it does not recognize stays a write. The names below
+// a name is not proof of safety. Enable it only for trusted servers. Anything it does not recognize stays a write. The names below
 // are conventional across MCP servers and none of them describes an action
 // that changes state.
 var readPrefixes = []string{
@@ -104,7 +103,7 @@ type Config struct {
 	Write []string `json:"write,omitempty"`
 
 	// Heuristic allows name-based inference for unlisted tools. Defaults to
-	// true; set false to require every tool to be classified by hand.
+	// false; explicitly opt in only for trusted servers with reviewed names.
 	Heuristic *bool `json:"heuristic,omitempty"`
 }
 
@@ -113,10 +112,10 @@ func New(cfg Config) *Classifier {
 	c := &Classifier{
 		read:      make(map[string]bool, len(cfg.Read)),
 		write:     make(map[string]bool, len(cfg.Write)),
-		heuristic: cfg.Heuristic == nil || *cfg.Heuristic,
+		heuristic: cfg.Heuristic != nil && *cfg.Heuristic,
 	}
 	for _, t := range cfg.Read {
-		c.read[strings.ToLower(t)] = true
+		c.read[t] = true
 	}
 	for _, t := range cfg.Write {
 		c.write[strings.ToLower(t)] = true
@@ -141,7 +140,7 @@ func (c *Classifier) Classify(method, tool string) Class {
 	switch {
 	case c.write[name]:
 		return ClassWrite
-	case c.read[name]:
+	case c.read[tool]:
 		return ClassRead
 	case !c.heuristic:
 		return ClassWrite

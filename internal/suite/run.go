@@ -91,10 +91,7 @@ func RunCase(ctx context.Context, c Case, opts Options) Result {
 		env.RunIDVar+"="+strconv.FormatInt(time.Now().UnixNano(), 36),
 	)
 	if opts.Hermetic {
-		path := filepath.Join(c.Dir, ".hermetic.json")
-		if err := os.WriteFile(path, []byte(`{"replay":{"fallThrough":false}}`+"\n"), 0o644); err == nil {
-			agent.Env = append(agent.Env, env.ConfigVar+"="+abs(path))
-		}
+		agent.Env = append(agent.Env, env.HermeticVar+"=1")
 	}
 
 	runErr := agent.Run()

@@ -38,7 +38,8 @@ func TestWriteListingBeatsReadListing(t *testing.T) {
 }
 
 func TestHeuristicRecognizesConventionalReadNames(t *testing.T) {
-	c := New(Config{})
+	on := true
+	c := New(Config{Heuristic: &on})
 	for _, tool := range []string{
 		"read_file", "get_issue", "list_files", "search_code",
 		"grep", "glob", "fetch_url", "describe_table", "ls",
@@ -81,12 +82,21 @@ func TestUnknownProtocolMethodIsWrite(t *testing.T) {
 	}
 }
 
-func TestClassificationIsCaseInsensitive(t *testing.T) {
+func TestReadAllowlistIsCaseSensitive(t *testing.T) {
 	c := New(Config{Read: []string{"MyTool"}})
-	if got := c.Classify("tools/call", "mytool"); got != ClassRead {
-		t.Errorf("case-sensitive lookup: %v", got)
+	if c.Classify("tools/call", "MyTool") != ClassRead {
+		t.Fatal("explicit read not recognized")
 	}
-	if got := c.Classify("tools/call", "READ_FILE"); got != ClassRead {
-		t.Errorf("heuristic is case-sensitive: %v", got)
+	if c.Classify("tools/call", "mytool") != ClassWrite {
+		t.Fatal("different tool inherited read permission")
+	}
+}
+
+func TestHeuristicIsOffByDefault(t *testing.T) {
+	c := New(Config{})
+	for _, tool := range []string{"get_and_delete", "read_file", "query", "fetch_url"} {
+		if c.Classify("tools/call", tool) != ClassWrite {
+			t.Fatalf("unreviewed tool %q treated as safe", tool)
+		}
 	}
 }

@@ -37,6 +37,9 @@ const (
 	// ConfigVar points at cassette.json. Resolved by the outer command and
 	// passed down so the shims do not each re-walk the directory tree.
 	ConfigVar = "CASSETTE_CONFIG"
+
+	// HermeticVar independently forbids live MCP fall-through in replay shims.
+	HermeticVar = "CASSETTE_HERMETIC"
 )
 
 // Mode is how a proxy shim behaves for the run it finds itself in.

@@ -3,7 +3,6 @@ package commands
 import (
 	"flag"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -46,7 +45,10 @@ func runInspect(ctx *cli.Context) error {
 	width := 96
 	fmt.Sscanf(ctx.Flags.Lookup("width").Value.String(), "%d", &width)
 
-	dir := filepath.Join(suite, ctx.Args[0])
+	dir, err := record.ChildPath(suite, ctx.Args[0])
+	if err != nil {
+		return err
+	}
 	run, err := record.OpenRun(dir)
 	if err != nil {
 		return err

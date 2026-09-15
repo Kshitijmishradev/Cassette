@@ -15,6 +15,11 @@ import (
 // The frontend fetches the same relative paths either way, so there is no
 // build-time switch between "demo mode" and "real mode" to get wrong.
 func Dump(b *Builder, outDir string) (int, error) {
+	if entries, err := os.ReadDir(filepath.Join(outDir, "api")); err == nil && len(entries) != 0 {
+		return 0, fmt.Errorf("API export destination is not empty; choose a fresh directory to avoid retaining old payloads")
+	} else if err != nil && !os.IsNotExist(err) {
+		return 0, err
+	}
 	s, err := b.BuildSuite()
 	if err != nil {
 		return 0, err

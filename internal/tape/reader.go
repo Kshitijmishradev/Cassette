@@ -41,6 +41,9 @@ func Open(path string) (*Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tape: stat %s: %w", path, err)
 	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("tape: %s: not a regular file", path)
+	}
 	size := st.Size()
 	if size < HeaderSize {
 		return nil, fmt.Errorf("tape: %s is too small to be a tape (%d bytes)", path, size)
@@ -75,6 +78,9 @@ func (r *Reader) load() error {
 	// corrupt tape must fail to open rather than produce a slice pointing
 	// past the end of the mapping.
 	total := uint64(len(r.data))
+	if h.IndexOff > total || uint64(h.Count) > (total-h.IndexOff)/EntrySize {
+		return fmt.Errorf("tape: %s: index offset or count out of range", r.path)
+	}
 	indexEnd := h.IndexOff + uint64(h.Count)*EntrySize
 
 	switch {
@@ -240,8 +246,7 @@ func (r *Reader) str(off uint32) string {
 		return ""
 	}
 	start := uint64(off) + uint64(used)
-	end := start + n
-	if end > uint64(len(buf)) {
+	if start > uint64(len(buf)) || n > uint64(len(buf))-start {
 		return ""
 	}
 	return unsafe.String(&buf[start], int(n))

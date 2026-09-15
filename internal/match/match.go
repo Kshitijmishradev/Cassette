@@ -15,6 +15,8 @@
 package match
 
 import (
+	"bytes"
+	"github.com/Kshitijmishradev/cassette/internal/jsonrpc"
 	"github.com/Kshitijmishradev/cassette/internal/tape"
 )
 
@@ -87,9 +89,14 @@ type Result struct {
 
 // Matcher answers requests from a tape.
 //
-// Both hash tiers are built at load. The tape already carries KeyHash and
-// NormHash on every entry, computed at record time, so this is one pass over
-// the index with no parsing and no hashing.
+// Both hash tiers are rebuilt from recorded requests at load. This validates
+// current matching semantics even for tapes written by older versions.
+type identity struct {
+	method string
+	tool   string
+	hash   uint64
+}
+
 type Matcher struct {
 	r *tape.Reader
 
@@ -98,8 +105,8 @@ type Matcher struct {
 	// something different. Reading a file before and after editing it is the
 	// obvious case, and collapsing those would serve the pre-edit contents
 	// to a post-edit read.
-	byKey  map[uint64][]int32
-	byNorm map[uint64][]int32
+	byKey  map[identity][]int32
+	byNorm map[identity][]int32
 
 	// byMethod backs the method-only tier. Kept separate rather than folded
 	// into the hash maps so that tier stays deliberate and reportable: a run
@@ -127,8 +134,8 @@ func New(r *tape.Reader) *Matcher {
 	entries := r.Entries()
 	m := &Matcher{
 		r:        r,
-		byKey:    make(map[uint64][]int32, len(entries)),
-		byNorm:   make(map[uint64][]int32, len(entries)),
+		byKey:    make(map[identity][]int32, len(entries)),
+		byNorm:   make(map[identity][]int32, len(entries)),
 		byMethod: make(map[string][]int32, 4),
 		used:     make([]bool, len(entries)),
 	}
@@ -140,9 +147,17 @@ func New(r *tape.Reader) *Matcher {
 		if e.ServerInitiated() {
 			continue
 		}
-		m.byKey[e.KeyHash] = append(m.byKey[e.KeyHash], int32(i))
-		if e.NormHash != e.KeyHash {
-			m.byNorm[e.NormHash] = append(m.byNorm[e.NormHash], int32(i))
+		// Derive current keys from recorded arguments so old tapes benefit
+		// from precision-preserving normalization without a format migration.
+		args, err := m.arguments(i)
+		if err != nil {
+			continue
+		}
+		key := identity{r.Method(i), r.ToolName(i), tape.HashKey(r.Method(i), args)}
+		m.byKey[key] = append(m.byKey[key], int32(i))
+		if norm := tape.HashNorm(key.method, args); norm != key.hash {
+			key.hash = norm
+			m.byNorm[key] = append(m.byNorm[key], int32(i))
 		}
 		if method := r.Method(i); argsInsensitive[method] {
 			m.byMethod[method] = append(m.byMethod[method], int32(i))
@@ -156,24 +171,24 @@ func New(r *tape.Reader) *Matcher {
 // The tiers are tried in order and the first hit wins. Exact before
 // normalized matters when a tape holds both a call and a differently
 // serialized version of it: the closer match should win.
-func (m *Matcher) Match(method string, args []byte) Result {
-	key := tape.HashKey(method, args)
-	if r, ok := m.pick(m.byKey[key], TierExact); ok {
+func (m *Matcher) Match(method, tool string, args []byte) Result {
+	key := identity{method, tool, tape.HashKey(method, args)}
+	if r, ok := m.pick(m.byKey[key], TierExact, args); ok {
 		return r
 	}
 
-	norm := tape.HashNorm(method, args)
-	if r, ok := m.pick(m.byNorm[norm], TierNormalized); ok {
+	norm := identity{method, tool, tape.HashNorm(method, args)}
+	if r, ok := m.pick(m.byNorm[norm], TierNormalized, args); ok {
 		return r
 	}
 	// A normalized hash can also land on an entry whose arguments were
 	// already canonical, in which case it was filed under byKey only.
-	if r, ok := m.pick(m.byKey[norm], TierNormalized); ok {
+	if r, ok := m.pick(m.byKey[norm], TierNormalized, args); ok {
 		return r
 	}
 
 	if argsInsensitive[method] {
-		if r, ok := m.pick(m.byMethod[method], TierMethod); ok {
+		if r, ok := m.pick(m.byMethod[method], TierMethod, args); ok {
 			return r
 		}
 	}
@@ -191,18 +206,52 @@ func (m *Matcher) Match(method string, args []byte) Result {
 // wall, and the Repeat flag makes it visible in the report. Failing here
 // would turn a small behavioral difference into a dead replay, which is
 // exactly the brittleness this tool exists to remove.
-func (m *Matcher) pick(candidates []int32, tier Tier) (Result, bool) {
-	if len(candidates) == 0 {
-		return Result{}, false
-	}
-	for _, i := range candidates {
+func (m *Matcher) pick(candidates []int32, tier Tier, args []byte) (Result, bool) {
+	last := -1
+	for _, candidate := range candidates {
+		i := int(candidate)
+		if tier != TierMethod {
+			recorded, err := m.arguments(i)
+			if err != nil {
+				continue
+			}
+			wanted := args
+			if tier == TierNormalized {
+				recorded, err = tape.Canonicalize(recorded)
+				if err != nil {
+					continue
+				}
+				wanted, err = tape.Canonicalize(args)
+				if err != nil {
+					continue
+				}
+			}
+			if !bytes.Equal(recorded, wanted) {
+				continue
+			}
+		}
+		last = i
 		if !m.used[i] {
 			m.used[i] = true
-			return Result{Index: int(i), Tier: tier, Found: true}, true
+			return Result{Index: i, Tier: tier, Found: true}, true
 		}
 	}
-	last := candidates[len(candidates)-1]
-	return Result{Index: int(last), Tier: tier, Found: true, Repeat: true}, true
+	if last >= 0 {
+		return Result{Index: last, Tier: tier, Found: true, Repeat: true}, true
+	}
+	return Result{}, false
+}
+
+func (m *Matcher) arguments(i int) ([]byte, error) {
+	request := bytes.TrimSpace(m.r.Request(i))
+	if m.r.Method(i) == "tools/call" {
+		call, err := jsonrpc.ParseToolCall(request)
+		if err != nil {
+			return nil, err
+		}
+		return call.Arguments, nil
+	}
+	return jsonrpc.ParseParams(request)
 }
 
 // Unused reports entries that were never served: calls the recording made

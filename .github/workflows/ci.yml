@@ -12,23 +12,27 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Build the embedded web bundle
         run: npm ci --prefix web && npm run build --prefix web
+      - name: Build the public website
+        run: npm run build:site --prefix web
+      - name: Audit frontend dependencies
+        run: npm audit --prefix web --audit-level=moderate
       - name: Verify the checked-in bundle is current
-        run: git diff --exit-code -- web/dist
+        run: test -z "$(git status --porcelain -- web/dist)"
 
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.27'
           check-latest: true
@@ -52,6 +56,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Scan Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
       - name: Test
         run: go test ./...
 
@@ -64,9 +71,22 @@ jobs:
   cross-compile:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.27'
       - name: Cross-compile the release matrix
         run: make dist
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.27"
+      - name: Scan all fetched Git history for secrets
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --log-opts=--all --redact

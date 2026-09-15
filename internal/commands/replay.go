@@ -29,21 +29,16 @@ func replayCmd() *cli.Command {
 
 With no agent command, the one recorded in the manifest is reused.
 
-There is no server process during replay. The tape answers directly, which
-is what makes a replay free, fast and side-effect free.
+Replay does not start a live MCP server by default. An unmatched call is
+refused. To explicitly enable exploratory live reads, set
+replay.fallThrough to true in cassette.json and list reviewed tool names
+under tools.read. Name heuristics are off by default and are not proof of
+safety. Unknown tools are writes.
 
-When a call has no recording, what happens depends on the tool, not on a
-global setting. A read-only tool may be run for real, which requires
-spawning the server and fast-forwarding it through the recorded handshake.
-Anything else is refused, because letting an unmatched write through turns a
-free experiment into a production action. Tools are read-only if listed in
-cassette.json or if their name follows a conventional read pattern;
-everything else is a write.
-
---hermetic disables fall-through entirely, so nothing can leave the process
-and any miss stops being answerable. That is the honest setting for CI,
-where a replay that quietly talked to the network is not the experiment
-anyone thought they were running.`,
+--hermetic overrides any configured fall-through permission in every wrapped
+MCP shim. It is recommended in CI. It does not sandbox the agent process:
+its own shell commands, network access, native tools, and unwrapped servers
+remain outside Cassette's control. Run only trusted agents and suites.`,
 		Flags: func(fs *flag.FlagSet) {
 			fs.String("suite", "./cassettes", "directory holding recorded runs")
 			fs.Bool("hermetic", false, "refuse every miss; never spawn a live server")
@@ -61,9 +56,15 @@ func runReplayCommand(ctx *cli.Context) error {
 	}
 
 	name := ctx.Args[0]
+	if err := record.ValidateName(name); err != nil {
+		return err
+	}
 	suite := ctx.Flags.Lookup("suite").Value.String()
 	hermetic := ctx.Flags.Lookup("hermetic").Value.String() == "true"
-	dir := filepath.Join(suite, name)
+	dir, err := record.ChildPath(suite, name)
+	if err != nil {
+		return err
+	}
 
 	m, err := record.ReadManifest(dir)
 	if err != nil {
@@ -99,7 +100,7 @@ func runReplayCommand(ctx *cli.Context) error {
 		env.RunIDVar+"="+newRunID(),
 	)
 	if hermetic {
-		agent.Env = append(agent.Env, env.ConfigVar+"="+mustAbs(hermeticConfig(dir)))
+		agent.Env = append(agent.Env, env.HermeticVar+"=1")
 	}
 
 	mode := "replaying"
@@ -128,12 +129,9 @@ func runReplayCommand(ctx *cli.Context) error {
 		return cli.Failuref("nothing was replayed")
 	}
 
-	worst := diff.VerdictIdentical
-	if ctx.Flags.Lookup("no-diff").Value.String() != "true" {
-		worst, err = renderDiffs(ctx, dir, reports)
-		if err != nil {
-			return err
-		}
+	worst, err := renderDiffs(ctx, dir, reports)
+	if err != nil {
+		return err
 	}
 
 	var refused int
@@ -189,6 +187,10 @@ func renderDiffs(ctx *cli.Context, dir string, reports []replay.Report) (diff.Ve
 
 		if d.Verdict > worst {
 			worst = d.Verdict
+		}
+
+		if ctx.Flags.Lookup("no-diff").Value.String() == "true" {
+			continue
 		}
 
 		// An identical trajectory needs one line, not a table. Printing a
@@ -269,13 +271,4 @@ func printReplaySummary(ctx *cli.Context, reports []replay.Report, wall time.Dur
 		}
 		fmt.Fprintf(ctx.Err, "    %-10s %-34s %s\n", m.Resolved, truncate(label, 34), truncate(m.Args, 60))
 	}
-}
-
-// hermeticConfig writes a config that forbids fall-through, so the setting
-// reaches every shim through the same channel as any other config rather
-// than needing its own environment variable.
-func hermeticConfig(dir string) string {
-	path := filepath.Join(dir, ".hermetic.json")
-	_ = os.WriteFile(path, []byte(`{"replay":{"fallThrough":false}}`+"\n"), 0o644)
-	return path
 }

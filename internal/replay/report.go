@@ -3,6 +3,7 @@ package replay
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/Kshitijmishradev/cassette/internal/record"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,6 +58,9 @@ func NewReport(tapeName string, r Result) Report {
 
 // Write saves the report beside its tape.
 func (r Report) Write(dir string) error {
+	if err := record.ValidateName(r.Tape); err != nil {
+		return err
+	}
 	b, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
@@ -72,7 +76,7 @@ func (r Report) Write(dir string) error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -99,12 +103,25 @@ func CollectReports(dir string) ([]Report, error) {
 
 	reports := make([]Report, 0, len(matches))
 	for _, p := range matches {
-		b, err := os.ReadFile(p)
+		safe, err := record.ChildPath(dir, filepath.Base(p))
+		if err != nil {
+			return nil, err
+		}
+		b, err := os.ReadFile(safe)
 		if err != nil {
 			return nil, err
 		}
 		var r Report
 		if err := json.Unmarshal(b, &r); err != nil {
+			return nil, err
+		}
+		if err := record.ValidateName(r.Tape); err != nil {
+			return nil, err
+		}
+		if filepath.Base(p) != r.Tape+ReportSuffix {
+			return nil, fmt.Errorf("replay report name does not match its tape")
+		}
+		if _, err := record.ChildPath(dir, r.Tape+".cas"); err != nil {
 			return nil, err
 		}
 		reports = append(reports, r)

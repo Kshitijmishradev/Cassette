@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +22,29 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	if !localHost(r.Host) {
+		writeError(w, http.StatusForbidden, "non-local Host is not allowed")
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		if err != nil || u.Scheme != scheme || u.User != nil || !strings.EqualFold(u.Host, r.Host) || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
+			return
+		}
+	}
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		writeError(w, http.StatusForbidden, "cross-site requests are not allowed")
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		writeError(w, http.StatusMethodNotAllowed, "only GET is supported")
 		return
@@ -80,7 +105,7 @@ func (h *Handler) writeJSON(w http.ResponseWriter, value any, err error) {
 		if errors.Is(err, api.ErrDiffUnavailable) || os.IsNotExist(err) {
 			status = http.StatusNotFound
 		}
-		writeError(w, status, err.Error())
+		writeError(w, status, http.StatusText(status))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -114,4 +139,22 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(api.Error{Error: message})
+}
+
+// Do not resolve arbitrary hostnames: DNS rebinding can point an attacker's
+// domain at loopback while preserving that domain as the browser origin.
+func localHost(authority string) bool {
+	host := authority
+	if strings.Contains(authority, ":") {
+		var err error
+		host, _, err = net.SplitHostPort(authority)
+		if err != nil {
+			return false
+		}
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

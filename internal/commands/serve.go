@@ -70,7 +70,7 @@ func runServe(ctx *cli.Context) error {
 	}
 	defer listener.Close()
 
-	serverURL := url.URL{Scheme: "http", Host: listener.Addr().String(), Path: "/"}
+	serverURL := url.URL{Scheme: "http", Host: listener.Addr().String(), Path: "/", Fragment: "/runs"}
 	if host, port, splitErr := net.SplitHostPort(listener.Addr().String()); splitErr == nil && net.ParseIP(host).IsLoopback() {
 		serverURL.Host = net.JoinHostPort("localhost", port)
 	}

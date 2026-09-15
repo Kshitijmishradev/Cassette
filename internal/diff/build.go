@@ -67,7 +67,7 @@ func FromTape(name string, r *tape.Reader, c *safety.Classifier) Trajectory {
 		t.Calls = append(t.Calls, Call{
 			Method:   method,
 			Tool:     tool,
-			ArgsHash: e.NormHash,
+			ArgsHash: tape.HashNorm(method, []byte(argsOf(req, env))),
 			Args:     truncateArgs(argsOf(req, env), argsPreviewWidth),
 			Class:    c.Classify(method, tool),
 		})

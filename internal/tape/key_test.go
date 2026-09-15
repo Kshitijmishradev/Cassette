@@ -100,3 +100,11 @@ func BenchmarkHashNorm(b *testing.B) {
 		HashNorm("tools/call", args)
 	}
 }
+
+func TestNormalizationPreservesLargeIdentifiers(t *testing.T) {
+	a := []byte(`{"id":9007199254740992}`)
+	b := []byte(`{"id":9007199254740993}`)
+	if HashNorm("tools/call", a) == HashNorm("tools/call", b) {
+		t.Fatal("distinct large identifiers collapsed")
+	}
+}

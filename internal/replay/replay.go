@@ -1,16 +1,8 @@
 // Package replay answers an agent's requests from a tape instead of a server.
 //
-// The important structural fact: in replay there is no server process. The
-// agent talks to cassette, cassette reads the tape, and nothing leaves the
-// machine. That is what makes a replay free, fast, and side-effect free, and
-// it is why everything an agent needs to open a session has to be on the tape.
-//
-// A live server is spawned only when a call misses and the tool is known to
-// be read-only. That path exists because tapes are never complete: an agent
-// whose prompt changed will grep for something slightly different, and
-// refusing every such call would make replay useless for exactly the
-// experiments it is meant to support. What it must never do is let an
-// unmatched write escape, which is the safety package's job.
+// Matched requests are answered without a live server. A caller must
+// explicitly supply LiveCommand to enable read-class fall-through. This
+// isolates wrapped MCP traffic, not the parent agent's own tools or network.
 package replay
 
 import (
@@ -177,7 +169,7 @@ func (e *engine) checkpoint() {
 
 func (e *engine) handle(msg []byte, env jsonrpc.Envelope) error {
 	method, tool, args := describe(msg, env)
-	res := e.matcher.Match(method, args)
+	res := e.matcher.Match(method, tool, args)
 
 	// Notifications are not part of the trajectory. They carry no decision:
 	// the agent is announcing something, not choosing to do something, and

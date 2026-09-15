@@ -4,9 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode site",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:viewer": "vite",
+    "build:site": "vite build --mode site",
+    "preview:site": "vite preview --mode site"
   },
   "dependencies": {
     "react": "^19.3.0",

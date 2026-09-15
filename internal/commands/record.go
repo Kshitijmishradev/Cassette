@@ -53,6 +53,9 @@ func runRecord(ctx *cli.Context) error {
 	}
 
 	name := ctx.Args[0]
+	if err := record.ValidateName(name); err != nil {
+		return err
+	}
 	suite := ctx.Flags.Lookup("suite").Value.String()
 	force := ctx.Flags.Lookup("force").Value.String() == "true"
 
@@ -155,7 +158,7 @@ func prepareDir(dir string, force bool) error {
 			return fmt.Errorf("removing existing recording: %w", err)
 		}
 	}
-	return os.MkdirAll(dir, 0o755)
+	return os.MkdirAll(dir, 0o700)
 }
 
 func mustAbs(p string) string {

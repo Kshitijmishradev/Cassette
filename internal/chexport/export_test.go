@@ -87,7 +87,7 @@ func TestExportProducesLoadableRows(t *testing.T) {
 	st, err := Export(Options{
 		SuiteDir:        buildSuite(t),
 		OutDir:          out,
-		Classifier:      safety.New(safety.Config{}),
+		Classifier:      safety.New(safety.Config{Read: []string{"read_file"}}),
 		IncludePayloads: true,
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func TestSpanFieldsAllExistInTheSchema(t *testing.T) {
 	out := t.TempDir()
 	if _, err := Export(Options{
 		SuiteDir: buildSuite(t), OutDir: out,
-		Classifier: safety.New(safety.Config{}), IncludePayloads: true,
+		Classifier: safety.New(safety.Config{Read: []string{"read_file"}}), IncludePayloads: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestSpanIDsAreStableAcrossExports(t *testing.T) {
 		out := t.TempDir()
 		if _, err := Export(Options{
 			SuiteDir: suiteDir, OutDir: out,
-			Classifier: safety.New(safety.Config{}), IncludePayloads: true,
+			Classifier: safety.New(safety.Config{Read: []string{"read_file"}}), IncludePayloads: true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +203,7 @@ func TestNeverReplayedCassetteHasUnknownVerdict(t *testing.T) {
 	out := t.TempDir()
 	if _, err := Export(Options{
 		SuiteDir: buildSuite(t), OutDir: out,
-		Classifier: safety.New(safety.Config{}),
+		Classifier: safety.New(safety.Config{Read: []string{"read_file"}}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestNoPayloadsOption(t *testing.T) {
 	out := t.TempDir()
 	st, err := Export(Options{
 		SuiteDir: buildSuite(t), OutDir: out,
-		Classifier: safety.New(safety.Config{}), IncludePayloads: false,
+		Classifier: safety.New(safety.Config{Read: []string{"read_file"}}), IncludePayloads: false,
 	})
 	if err != nil {
 		t.Fatal(err)

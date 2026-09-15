@@ -87,6 +87,9 @@ func runWrap(ctx *cli.Context) error {
 			name = record.TapeName(ctx.Child)
 		}
 
+		if err := record.ValidateName(name); err != nil {
+			return err
+		}
 		rec, err := record.New(filepath.Join(dir, name+".cas"))
 		if err != nil {
 			return err
@@ -155,7 +158,11 @@ func runReplay(ctx *cli.Context, logf func(string, ...any)) error {
 		name = record.TapeName(ctx.Child)
 	}
 
-	t, err := tape.Open(filepath.Join(dir, name+".cas"))
+	path, err := record.ChildPath(dir, name+".cas")
+	if err != nil {
+		return err
+	}
+	t, err := tape.Open(path)
 	if err != nil {
 		return fmt.Errorf("opening tape for %s: %w", name, err)
 	}
@@ -179,7 +186,7 @@ func runReplay(ctx *cli.Context, logf func(string, ...any)) error {
 	// the agent handed us. Nil disables it entirely, which is what makes a
 	// hermetic replay provable rather than merely intended.
 	var liveCmd []string
-	if cfg.Replay.AllowFallThrough() {
+	if cfg.Replay.AllowFallThrough() && os.Getenv(env.HermeticVar) != "1" {
 		liveCmd = ctx.Child
 	}
 
@@ -221,7 +228,9 @@ func replayEnv() []string {
 		switch {
 		case strings.HasPrefix(kv, env.ModeVar+"="),
 			strings.HasPrefix(kv, env.TapeVar+"="),
-			strings.HasPrefix(kv, env.RunIDVar+"="):
+			strings.HasPrefix(kv, env.RunIDVar+"="),
+			strings.HasPrefix(kv, env.HermeticVar+"="),
+			strings.HasPrefix(kv, env.ConfigVar+"="):
 			continue
 		}
 		out = append(out, kv)

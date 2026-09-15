@@ -123,6 +123,12 @@ method-only matches tell you when the new agent is moving away from the tape.
 
 ## Quick start
 
+For a ready-to-run binary, choose your platform archive from
+[Releases](https://github.com/Kshitijmishradev/Cassette/releases) and follow
+[QUICKSTART.md](QUICKSTART.md). It includes the local viewer and needs no Go or
+Node installation. Release archives contain only the binary, license, quick-start
+guide, and security guidance; the website and demo recordings stay separate.
+
 Build the dependency-free Go binary:
 
 ```sh
@@ -166,8 +172,8 @@ Then run the workflow from the outside:
 ./bin/cassette serve --suite ./cassettes --open
 ```
 
-Use `--hermetic` in CI. A missing read is not allowed to reach the network, and
-an unmatched write is always refused.
+Use `--hermetic` in CI. Wrapped MCP misses cannot reach a live server.
+Cassette does not sandbox the agent’s own network, shell, or native tools.
 
 ---
 
@@ -218,11 +224,16 @@ never did.
 
 Cassette classifies tools as reads or writes.
 
-- A read-only miss may fall through to the real server during an exploratory
-  replay.
+- Live MCP fall-through is disabled by default. Exploratory replay requires
+  explicit `replay.fallThrough: true` and reviewed tool names in `tools.read`.
+- Tool-name heuristics are off by default; names do not prove read-only behavior.
 - A write miss is refused by default.
 - `--hermetic` refuses all misses and is the recommended CI mode.
 - Replay can run without starting the original MCP server at all.
+
+**Run only trusted agents and suites.** A manifest contains an executable agent
+command, and hermetic replay does not sandbox that process. See [SECURITY.md](./SECURITY.md)
+for deployment guidance, trust boundaries, and the security audit.
 
 Recorded payloads may contain sensitive data. Cassette is local-first and does
 not upload tapes to a hosted service. Review or sanitize any recording before
@@ -280,20 +291,21 @@ response came from the tape. Read the full [real-agent run](./docs/REAL_AGENT_RU
 ## Use it in a pull request
 
 The repository is also a composite GitHub Action. It replays a committed
-suite, preserves Cassette's exit codes and maintains one readable PR comment.
+suite and preserves Cassette's exit codes. A PR comment is optional; give write
+credentials only to workflows that execute exclusively trusted code.
 
 ```yaml
 permissions:
   contents: read
-  pull-requests: write
 
 steps:
   - uses: actions/checkout@v4
+    with:
+      persist-credentials: false
   - uses: Kshitijmishradev/Cassette@main
     with:
       suite: ./cassettes
       fail-on: outcome
-      github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ---

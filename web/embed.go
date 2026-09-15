@@ -11,7 +11,7 @@ import (
 // dist is checked in so a clean Go checkout still builds one self-contained
 // binary. Regenerate it with `npm run build --prefix web` after UI changes.
 //
-//go:embed dist
+//go:embed dist/index.html dist/assets/* dist/_headers
 var bundle embed.FS
 
 // Assets returns the production bundle rooted at its index.html.

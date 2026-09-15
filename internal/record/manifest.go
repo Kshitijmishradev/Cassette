@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Kshitijmishradev/cassette/internal/tape"
@@ -150,18 +151,35 @@ func WriteManifest(dir string, m Manifest) error {
 		return err
 	}
 	b = append(b, '\n')
-	return os.WriteFile(filepath.Join(dir, ManifestName), b, 0o644)
+	return os.WriteFile(filepath.Join(dir, ManifestName), b, 0o600)
 }
 
 // ReadManifest loads the manifest from dir.
 func ReadManifest(dir string) (Manifest, error) {
 	var m Manifest
-	b, err := os.ReadFile(filepath.Join(dir, ManifestName))
+	path, err := ChildPath(dir, ManifestName)
+	if err != nil {
+		return m, err
+	}
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return m, err
 	}
 	if err := json.Unmarshal(b, &m); err != nil {
 		return m, fmt.Errorf("parsing %s: %w", ManifestName, err)
+	}
+	seen := make(map[string]bool)
+	for _, t := range m.Tapes {
+		if !strings.HasSuffix(t.File, ".cas") {
+			return m, fmt.Errorf("invalid tape filename %q", t.File)
+		}
+		if _, err := ChildPath(dir, t.File); err != nil {
+			return m, err
+		}
+		if seen[t.File] {
+			return m, fmt.Errorf("duplicate tape %q", t.File)
+		}
+		seen[t.File] = true
 	}
 	return m, nil
 }

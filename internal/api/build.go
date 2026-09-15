@@ -135,7 +135,10 @@ func (b *Builder) verdictFor(c suite.Case) (string, *ReplayStats, error) {
 
 // BuildRun produces one run's full trajectory.
 func (b *Builder) BuildRun(name string) (*Run, error) {
-	dir := filepath.Join(b.SuiteDir, name)
+	dir, err := record.ChildPath(b.SuiteDir, name)
+	if err != nil {
+		return nil, err
+	}
 
 	run, err := record.OpenRun(dir)
 	if err != nil {
@@ -217,7 +220,10 @@ func (b *Builder) tiersByTape(dir string) map[string][]string {
 
 // BuildCall produces the full bodies for one step.
 func (b *Builder) BuildCall(name string, index int) (*CallBodies, error) {
-	dir := filepath.Join(b.SuiteDir, name)
+	dir, err := record.ChildPath(b.SuiteDir, name)
+	if err != nil {
+		return nil, err
+	}
 
 	run, err := record.OpenRun(dir)
 	if err != nil {
@@ -241,7 +247,10 @@ func (b *Builder) BuildCall(name string, index int) (*CallBodies, error) {
 
 // BuildDiff compares a run's recording against its last replay.
 func (b *Builder) BuildDiff(name string) (*Diff, error) {
-	dir := filepath.Join(b.SuiteDir, name)
+	dir, err := record.ChildPath(b.SuiteDir, name)
+	if err != nil {
+		return nil, err
+	}
 
 	reports, err := replay.CollectReports(dir)
 	if err != nil {

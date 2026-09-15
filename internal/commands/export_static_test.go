@@ -36,3 +36,35 @@ func TestStaticExportWritesBundleAndOfflineAPI(t *testing.T) {
 		t.Fatalf("static suite is not marked offline: %s", suiteJSON)
 	}
 }
+
+func TestStaticExportRejectsUnsupportedPayloadOmission(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "site")
+	var stdout, stderr bytes.Buffer
+	code := App().Run([]string{"export", "--static", out, "--no-payloads"}, &stdout, &stderr)
+	if code == cli.ExitOK {
+		t.Fatal("silently ignored --no-payloads")
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("export wrote files before rejecting flag")
+	}
+}
+
+func TestRecordTraversalCannotDeleteOutsideSuite(t *testing.T) {
+	root := t.TempDir()
+	victim := filepath.Join(root, "keep")
+	if err := os.MkdirAll(victim, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(victim, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := App().Run([]string{"record", "../keep", "--suite", filepath.Join(root, "suite"), "--force", "--", "echo", "unused"}, &stdout, &stderr)
+	if code == cli.ExitOK {
+		t.Fatal("accepted traversal recording name")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatal("deleted outside suite")
+	}
+}

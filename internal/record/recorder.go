@@ -125,10 +125,9 @@ func (r *Recorder) onClientMessage(raw []byte, env jsonrpc.Envelope) {
 		call.flags |= tape.EntryIsToolCall
 		if tc, err := jsonrpc.ParseToolCall(msg); err == nil {
 			call.toolName = tc.Name
-			// For a tool call the arguments, not the whole params object,
-			// are what identifies the call. Hashing params would fold in
-			// the tool name twice and make the key sensitive to fields
-			// that do not affect what was asked for.
+			// Hash arguments separately. The matcher also requires the
+			// stored method and ToolName to agree; hashes alone cannot
+			// distinguish different tools with the same arguments.
 			args = tc.Arguments
 		} else {
 			r.note(fmt.Errorf("tools/call: %w", err))

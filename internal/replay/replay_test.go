@@ -168,7 +168,7 @@ func TestProgressIsReportedBeforeStdinCloses(t *testing.T) {
 func TestHermeticReplayRefusesEveryMiss(t *testing.T) {
 	rd := buildTape(t, []rec{{
 		method: "tools/call", tool: "read", args: `{"path":"/x"}`,
-		request:  `{"id":1,"method":"tools/call"}`,
+		request:  `{"id":1,"method":"tools/call","params":{"name":"read","arguments":{"path":"/x"}}}`,
 		response: `{"jsonrpc":"2.0","id":1,"result":{}}`,
 	}})
 
@@ -274,7 +274,7 @@ func TestServerInitiatedMessagesAreEmittedInPosition(t *testing.T) {
 	rd := buildTape(t, []rec{
 		{
 			method: "tools/call", tool: "read", args: `{"path":"/x"}`,
-			request:  `{"id":1,"method":"tools/call"}`,
+			request:  `{"id":1,"method":"tools/call","params":{"name":"read","arguments":{"path":"/x"}}}`,
 			response: `{"jsonrpc":"2.0","id":1,"result":{"first":true}}`,
 		},
 		{

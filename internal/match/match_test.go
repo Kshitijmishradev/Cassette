@@ -1,6 +1,7 @@
 package match
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -23,6 +24,14 @@ func build(t *testing.T, recs []rec) *tape.Reader {
 		t.Fatal(err)
 	}
 	for i, r := range recs {
+		params := json.RawMessage(r.args)
+		if len(params) == 0 {
+			params = json.RawMessage(`{}`)
+		}
+		if r.tool != "" {
+			params, _ = json.Marshal(map[string]any{"name": r.tool, "arguments": params})
+		}
+		request, _ := json.Marshal(map[string]any{"id": 1, "method": r.method, "params": params})
 		flags := uint32(0)
 		if r.tool != "" {
 			flags |= tape.EntryIsToolCall
@@ -30,7 +39,7 @@ func build(t *testing.T, recs []rec) *tape.Reader {
 		if err := w.Append(tape.Record{
 			Method:       r.method,
 			ToolName:     r.tool,
-			Request:      []byte(`{"id":1,"method":"` + r.method + `"}`),
+			Request:      request,
 			Response:     []byte(r.body),
 			StartedNanos: int64(i + 1),
 			KeyHash:      tape.HashKey(r.method, []byte(r.args)),
@@ -61,7 +70,7 @@ func TestExactBeatsNormalized(t *testing.T) {
 
 	// The canonical form is present verbatim, so it must win on the exact
 	// tier rather than being served the reordered recording.
-	res := m.Match("tools/call", []byte(`{"a":1,"b":2}`))
+	res := m.Match("tools/call", "read", []byte(`{"a":1,"b":2}`))
 	if !res.Found || res.Tier != TierExact {
 		t.Fatalf("got tier %v found %v, want exact", res.Tier, res.Found)
 	}
@@ -76,7 +85,7 @@ func TestNormalizedMatchesReorderedArguments(t *testing.T) {
 	})
 	m := New(rd)
 
-	res := m.Match("tools/call", []byte(`{ "limit" : 10 , "path" : "/x" }`))
+	res := m.Match("tools/call", "read", []byte(`{ "limit" : 10 , "path" : "/x" }`))
 	if !res.Found {
 		t.Fatal("reordered arguments did not match")
 	}
@@ -91,7 +100,7 @@ func TestMiss(t *testing.T) {
 	})
 	m := New(rd)
 
-	if res := m.Match("tools/call", []byte(`{"path":"/totally/different"}`)); res.Found {
+	if res := m.Match("tools/call", "read", []byte(`{"path":"/totally/different"}`)); res.Found {
 		t.Errorf("unrelated arguments matched entry %d at tier %v", res.Index, res.Tier)
 	}
 }
@@ -109,7 +118,7 @@ func TestInitializeMatchesDespiteDifferentClientInfo(t *testing.T) {
 	m := New(rd)
 
 	live := `{"protocolVersion":"2024-11-05","clientInfo":{"name":"other-agent","version":"9.9"}}`
-	res := m.Match("initialize", []byte(live))
+	res := m.Match("initialize", "", []byte(live))
 	if !res.Found {
 		t.Fatal("initialize did not match across different client info")
 	}
@@ -127,7 +136,7 @@ func TestMethodTierDoesNotApplyToToolCalls(t *testing.T) {
 	})
 	m := New(rd)
 
-	if res := m.Match("tools/call", []byte(`{"path":"/b"}`)); res.Found {
+	if res := m.Match("tools/call", "read", []byte(`{"path":"/b"}`)); res.Found {
 		t.Errorf("tools/call matched by method alone: entry %d tier %v", res.Index, res.Tier)
 	}
 }
@@ -150,8 +159,8 @@ func TestRepeatedCallsAreServedInOrder(t *testing.T) {
 	})
 	m := New(rd)
 
-	first := m.Match("tools/call", []byte(`{"path":"/f"}`))
-	second := m.Match("tools/call", []byte(`{"path":"/f"}`))
+	first := m.Match("tools/call", "read", []byte(`{"path":"/f"}`))
+	second := m.Match("tools/call", "read", []byte(`{"path":"/f"}`))
 
 	if first.Index == second.Index {
 		t.Fatalf("both calls served entry %d; the second recording was never used", first.Index)
@@ -170,8 +179,8 @@ func TestExhaustedRecordingIsReusedAndFlagged(t *testing.T) {
 	})
 	m := New(rd)
 
-	m.Match("tools/call", []byte(`{"path":"/f"}`))
-	again := m.Match("tools/call", []byte(`{"path":"/f"}`))
+	m.Match("tools/call", "read", []byte(`{"path":"/f"}`))
+	again := m.Match("tools/call", "read", []byte(`{"path":"/f"}`))
 
 	if !again.Found {
 		t.Fatal("an extra call failed instead of reusing the recording")
@@ -191,7 +200,7 @@ func TestUnusedReportsRecordedCallsThisRunSkipped(t *testing.T) {
 	})
 	m := New(rd)
 
-	m.Match("tools/call", []byte(`{"path":"/b"}`))
+	m.Match("tools/call", "read", []byte(`{"path":"/b"}`))
 
 	unused := m.Unused()
 	if len(unused) != 2 {
@@ -213,5 +222,33 @@ func TestTierNames(t *testing.T) {
 		if got := tier.String(); got != name {
 			t.Errorf("Tier(%d).String() = %q, want %q", tier, got, name)
 		}
+	}
+}
+
+func TestToolIdentitySeparatesIdenticalArguments(t *testing.T) {
+	rd := build(t, []rec{
+		{method: "tools/call", tool: "read", args: `{"id":1}`, body: `{"safe":true}`},
+		{method: "tools/call", tool: "delete", args: `{"id":1}`, body: `{"deleted":true}`},
+	})
+	m := New(rd)
+	if got := m.Match("tools/call", "delete", []byte(`{"id":1}`)); !got.Found || got.Index != 1 {
+		t.Fatalf("wrong tool matched: %+v", got)
+	}
+	if got := m.Match("tools/call", "refund", []byte(`{"id":1}`)); got.Found {
+		t.Fatalf("unrecorded write matched: %+v", got)
+	}
+	if got := m.Match("tools/call", "Read", []byte(`{ "id" : 1 }`)); got.Found {
+		t.Fatalf("case-distinct tool matched: %+v", got)
+	}
+	if got := m.Match("tools/call", "read", []byte(`{ "id" : 1 }`)); !got.Found || got.Index != 0 {
+		t.Fatalf("normalized matching failed: %+v", got)
+	}
+}
+
+func TestLargeIdentifierCannotMatchRoundedValue(t *testing.T) {
+	rd := build(t, []rec{{method: "tools/call", tool: "read", args: `{"id":9007199254740993}`, body: `{}`}})
+	m := New(rd)
+	if res := m.Match("tools/call", "read", []byte(`{ "id": 9007199254740992 }`)); res.Found {
+		t.Fatal("rounded identifier matched")
 	}
 }

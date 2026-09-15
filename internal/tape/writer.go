@@ -56,7 +56,7 @@ type Writer struct {
 
 // Create opens a writer for the tape at path.
 func Create(path string) (*Writer, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("tape: create directory: %w", err)
 	}
 	scratch, err := os.CreateTemp(filepath.Dir(path), ".cassette-blobs-*")
@@ -174,11 +174,11 @@ func (w *Writer) Close() error {
 		CreatedNanos: w.created,
 	}
 
-	tmp := w.path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	f, err := os.CreateTemp(filepath.Dir(w.path), ".cassette-final-*")
 	if err != nil {
-		return fmt.Errorf("tape: create %s: %w", tmp, err)
+		return fmt.Errorf("tape: create temporary tape: %w", err)
 	}
+	tmp := f.Name()
 	defer os.Remove(tmp) // no-op once the rename below succeeds
 
 	out := bufio.NewWriterSize(f, 256<<10)

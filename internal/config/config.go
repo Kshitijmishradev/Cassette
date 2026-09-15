@@ -29,7 +29,7 @@ type Config struct {
 // Replay holds replay-time behavior.
 type Replay struct {
 	// FallThrough allows an unmatched read-class call to reach a live
-	// server. Defaults to true. Setting it false makes replay entirely
+	// server. Defaults to false. Setting it false makes MCP replay entirely
 	// hermetic: nothing leaves the process, and any miss stops the run.
 	//
 	// Hermetic is the stricter and more honest mode for CI, where a replay
@@ -40,7 +40,7 @@ type Replay struct {
 
 // AllowFallThrough reports the effective setting.
 func (r Replay) AllowFallThrough() bool {
-	return r.FallThrough == nil || *r.FallThrough
+	return r.FallThrough != nil && *r.FallThrough
 }
 
 // Classifier builds a tool classifier from this config.

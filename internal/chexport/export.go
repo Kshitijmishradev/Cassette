@@ -101,6 +101,11 @@ type run struct {
 // Export writes a suite into ClickHouse-loadable files.
 func Export(opts Options) (Stats, error) {
 	var st Stats
+	if entries, err := os.ReadDir(opts.OutDir); err == nil && len(entries) != 0 {
+		return st, fmt.Errorf("export destination is not empty; choose a fresh directory to avoid retaining old payloads")
+	} else if err != nil && !os.IsNotExist(err) {
+		return st, err
+	}
 
 	cases, err := suite.Discover(opts.SuiteDir)
 	if err != nil {

@@ -351,10 +351,10 @@ So matching is a ladder, and **every answer reports its tier**. A run served
 user deserves to see which they got.
 
 ```
-exact       hash(method, canonical args)         ~80 ns   hashmap
-normalized  hash(method, sorted-key args)        ~200 ns  hashmap
-method      same method, arguments ignored       ~80 ns   hashmap, 3 methods only
-fuzzy       nearest neighbour within one tool    ~2 µs    reserved, not yet live
+exact       method + tool + exact argument bytes
+normalized  method + tool + sorted-key arguments (numeric precision preserved)
+method      same method, arguments ignored (3 protocol methods only)
+fuzzy       reserved, not yet live
 miss        policy depends on the tool's class
 ```
 
@@ -414,15 +414,18 @@ name heuristic           →  read      (only if it recognizes the name)
 anything else            →  write
 ```
 
-The name heuristic is **one-directional**: it can only prove a tool is safe,
-never that one is dangerous, and an explicit listing always beats it. There is
-a test for `read_and_delete`, which is exactly the name a heuristic would get
-wrong on its own.
+Tool-name heuristics are disabled by default. A name cannot prove that a tool
+is safe. Explicit read allowlists are case-sensitive because MCP tool names
+are case-sensitive; explicit write overrides remain conservative.
 
-`--hermetic` disables fall-through entirely, so nothing can leave the process
-and any miss stops being answerable. That is the honest setting for CI: a
-replay that quietly talked to the network is not the experiment anyone thought
-they were running.
+Live MCP fall-through is disabled by default. To opt into exploratory live
+reads, configure `replay.fallThrough: true` and list reviewed `tools.read`
+names. `--hermetic` passes `CASSETTE_HERMETIC=1` to every shim and overrides
+configured fall-through permission without writing a policy file into a suite.
+
+This boundary covers wrapped MCP traffic, not the agent process. Native tools,
+shell commands, and direct network calls remain outside Cassette. Manifests
+contain executable commands and must be trusted. See [SECURITY.md](./SECURITY.md).
 
 ### Id splicing
 
